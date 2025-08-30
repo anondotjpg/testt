@@ -31,9 +31,9 @@ export default async function HomePage() {
   const contractAddress = "dogbonk";
 
   return (
-    <div className="max-w-4xl mx-auto p-4 mt-8 md:mt-12 min-h-screen flex flex-col">
+    <div className="max-w-4xl mx-auto p-4 mt-6 md:mt-8 min-h-screen flex flex-col">
       {/* Top left area with X link and contract address */}
-      <div className="flex justify-between items-start mb-4 absolute top-4 right-4">
+      <div className="flex justify-between items-start mb-4 absolute top-5 right-1">
         <div className="flex items-center gap-1">
           <Link
             href="https://x.com/4bonkorg"
@@ -44,11 +44,10 @@ export default async function HomePage() {
             𝕏
           </Link>
           <AddressDisplay contractAddress={contractAddress} />
-          <InfoModal />
         </div>
       </div>
 
-      <div className="text-center mb-8">
+      <div className="text-center mb-4">
         <Image 
           src="/head.png" 
           alt="Logo" 
@@ -63,7 +62,7 @@ export default async function HomePage() {
         />
       </div>
 
-      <div className='flex justify-center mb-[5%]'>
+      <div className='flex justify-center mb-[3%]'>
         <img src="/headr.png" className='size-[50%] border' />
       </div>
 
