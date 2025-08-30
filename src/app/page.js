@@ -3,6 +3,7 @@ import Image from 'next/image';
 import { getAllBoards, getAllThreads } from '@/lib/db-operations';
 import AddressDisplay from './components/Copy';
 import InfoModal from './components/InfoModal';
+import Marquee from 'react-fast-marquee';
 
 // Force dynamic rendering to ensure fresh data
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,13 @@ export default async function HomePage() {
 
   return (
     <div className="max-w-4xl mx-auto p-4 mt-6 md:mt-8 min-h-screen flex flex-col">
+      <div className='w-screen absolute top-0 inset-0'>
+        <Marquee speed={100}>
+          <p className="text-[#890000]">
+            4bonk is a 4chan inspired platform for <a href="https://bonk.fun" className='inline text-blue-600 underline'>bonk.fun</a> and crypto culture. We aim to be the hub for major discourse of all crypto topics. Since we are heavily inspired by 4chan many of the same features the internet has loved for decades are available. For example the legendary greentext with &gt; and reply to post with &gt;&gt;. 4bonk was built by a dedicated team with a passion for crypto and the extreme culture that comes with it. We are a small team of traders, developers, and overall crypto-natives. We built 4bonk because we believe there {`isn't`} anything like this for the general crypto culture.&nbsp;
+          </p>
+        </Marquee>
+      </div>
       {/* Top left area with X link and contract address */}
       <div className="flex justify-between items-start mb-4 absolute top-5 right-1">
         <div className="flex items-center gap-1">
