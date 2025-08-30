@@ -71,7 +71,7 @@ export default async function HomePage() {
       </div>
 
       <div className='flex justify-center mb-[3%]'>
-        <img src="/headr.png" className='size-[50%] border' />
+        <video autoPlay loop muted src="/gif.mp4" className='size-[50%] border' />
       </div>
 
       <div className="bg-[#fff0c5] border-1 border-orange-700 h-min">
