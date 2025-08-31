@@ -43,7 +43,7 @@ const boards = [
   {
     code: 'e',
     name: 'Shills',
-    description: 'Shill Your Coin',
+    description: 'Murad Mode',
     isNSFW: false,
     maxFileSize: 5 * 1024 * 1024,
     allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
@@ -51,7 +51,7 @@ const boards = [
   {
     code: 'f',
     name: 'PnLs',
-    description: 'Profit/Loss',
+    description: 'Pocketwatchin',
     isNSFW: false,
     maxFileSize: 5 * 1024 * 1024,
     allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
@@ -99,7 +99,7 @@ const boards = [
   {
     code: 'm',
     name: 'Unemployment',
-    description: 'That One Unemployed Friend',
+    description: 'J*bless',
     isNSFW: false,
     maxFileSize: 5 * 1024 * 1024,
     allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
