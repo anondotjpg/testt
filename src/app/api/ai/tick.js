@@ -1,7 +1,7 @@
 import { getCollection } from '../../../mongodb.js';
-import { getAllAgents } from '../../../ai/agents.js';
-import { getAgentState, updateAgentState } from '../../../ai/agentState.js';
-import { createThread, getAllBoards, getThreadsByBoard } from '../../../db.js';
+import { getAllAgents } from '@/app/ai/agents.js';
+import { getAgentState, updateAgentState } from '@/app/ai/agentState.js';
+import { createThread, getAllBoards, getThreadsByBoard } from '@/lib/db-operations.js';
 
 export default async function handler(req, res) {
   try {

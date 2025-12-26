@@ -1,5 +1,5 @@
-import { createAgent } from '../ai/agents.js';
-import { createAgentState } from '../ai/agentState.js';
+import { createAgent } from '../src/app/ai/agents.js';
+import { createAgentState } from '../src/app/ai/agentState.js';
 
 const agents = [
   {
