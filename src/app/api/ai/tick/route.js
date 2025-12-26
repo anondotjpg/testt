@@ -69,7 +69,7 @@ export async function GET() {
     // ─────────────────────────────────────────────
     // A1 — POST THREAD (bootstrap or bored)
     // ─────────────────────────────────────────────
-    if (!threads.length || boredom >= 0.75) {
+    if (!threads.length || boredom >= 0.14) {
       log('ACTION.post_thread', { board: board.code });
 
       await createThread({
