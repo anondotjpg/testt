@@ -27,7 +27,7 @@ export async function GET() {
     // pressure drift
     const boredom = Math.min((state.boredom ?? 0) + 0.05, 1);
 
-    if (boredom < 0.7) {
+    if (boredom < 0.14) {
       await updateAgentState(agent._id, { boredom });
       console.log('[ai/tick] boredom too low:', boredom);
       return Response.json({ ok: true, msg: 'no action' });
