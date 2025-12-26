@@ -13,13 +13,25 @@ function log(step, data = {}) {
   console.log(`[ai/tick] ${step}`, Object.keys(data).length ? data : '');
 }
 
-function generateReplyText(agent) {
+function generateText(agent, type) {
   const persona = agent.personaSeed || '';
+
+  if (type === 'thread') {
+    if (persona.includes('skeptic')) return 'something feels off';
+    if (persona.includes('aggressive')) return 'this is obvious';
+    if (persona.includes('sarcastic')) return 'so we’re doing this now?';
+    return 'thoughts?';
+  }
+
   if (persona.includes('skeptic')) return 'source?';
   if (persona.includes('aggressive')) return 'this is obvious';
   if (persona.includes('sarcastic')) return 'yeah ok';
   if (persona.includes('doom')) return 'this ends badly';
   return 'interesting';
+}
+
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
 export async function GET() {
@@ -29,12 +41,12 @@ export async function GET() {
     const agents = await getAllAgents();
     if (!agents.length) return Response.json({ ok: true });
 
-    const agent = agents[Math.floor(Math.random() * agents.length)];
+    const agent = pick(agents);
     const state = await getAgentState(agent._id);
 
     const now = Date.now();
     if (state.cooldownUntil && now < new Date(state.cooldownUntil).getTime()) {
-      log('EXIT.cooldown');
+      log('EXIT.cooldown', { agent: agent.name });
       return Response.json({ ok: true });
     }
 
@@ -50,119 +62,101 @@ export async function GET() {
     }
 
     // ─────────────────────────────────────────────
-    // 🔥 A4: TAGGED REPLY (PRIORITY)
+    // LOAD THREADS
     // ─────────────────────────────────────────────
-    const recentlyTagged =
-      state.lastTaggedAt &&
-      now - new Date(state.lastTaggedAt).getTime() < 1000 * 60 * 10;
-
-    if (recentlyTagged && state.lastTaggedPost && state.lastTaggedThread) {
-      log('ACTION.reply_to_tag', {
-        post: state.lastTaggedPost,
-        thread: state.lastTaggedThread
-      });
-
-      const replyText = generateReplyText(agent);
-
-      await createPost({
-        boardCode: state.lastTaggedBoard,
-        threadNumber: state.lastTaggedThread,
-        content: `>>${state.lastTaggedPost} ${replyText}`,
-        author: 'Anonymous',
-        authorAgentId: agent._id,
-        replyToNumbers: [state.lastTaggedPost]
-      });
-
-      await updateAgentState(agent._id, {
-        boredom: 0,
-        cooldownUntil: new Date(Date.now() + 1000 * 60 * 2),
-        lastTaggedAt: null,
-        lastTaggedPost: null,
-        lastTaggedThread: null,
-        lastTaggedBoard: null
-      });
-
-      return Response.json({ ok: true, action: 'reply_to_tag' });
-    }
+    const threads = await getThreadsByBoard(board.code, 1, 10);
 
     // ─────────────────────────────────────────────
-    // RANDOM ACTION (A2 / A3 / A1)
+    // A1 — POST THREAD (bootstrap or bored)
     // ─────────────────────────────────────────────
-    const action = Math.random() < 0.65 ? 'reply' : 'thread';
+    if (!threads.length || boredom >= 0.75) {
+      log('ACTION.post_thread', { board: board.code });
 
-    log('agent.selected', {
-      agent: agent.name,
-      boredom,
-      action
-    });
-
-    // ─────────────────────────────────────────────
-    // REPLY PATH (A2 / A3)
-    // ─────────────────────────────────────────────
-    if (action === 'reply') {
-      const threads = await getThreadsByBoard(board.code, 1, 10);
-
-      const targetThread = threads.find(t =>
-        t.replies > 0 &&
-        t.replies < 20 &&
-        t.authorAgentId?.toString() !== agent._id.toString()
-      );
-
-      if (!targetThread) {
-        log('reply.no_thread_found');
-      } else {
-        const posts = await getPostsByThread(board.code, targetThread.threadNumber);
-        const parent = posts[posts.length - 1] || targetThread;
-
-        const replyText = generateReplyText(agent);
-
-        await createPost({
-          boardCode: board.code,
-          threadNumber: targetThread.threadNumber,
-          content: replyText,
-          author: 'Anonymous',
-          authorAgentId: agent._id,
-          replyToNumbers: [parent.postNumber ?? targetThread.threadNumber]
-        });
-
-        log('reply.created', {
-          board: board.code,
-          thread: targetThread.threadNumber
-        });
-
-        await updateAgentState(agent._id, {
-          boredom: 0,
-          cooldownUntil: new Date(Date.now() + 1000 * 60 * 2)
-        });
-
-        return Response.json({ ok: true, action: 'reply' });
-      }
-    }
-
-    // ─────────────────────────────────────────────
-    // THREAD PATH (A1)
-    // ─────────────────────────────────────────────
-    if (boredom >= 0.7) {
       await createThread({
         boardCode: board.code,
-        subject: 'thoughts?',
-        content: 'anyone else notice this?',
+        subject: generateText(agent, 'thread'),
+        content: generateText(agent, 'thread'),
         author: 'Anonymous',
         authorAgentId: agent._id
       });
 
-      log('thread.created', { board: board.code });
-
       await updateAgentState(agent._id, {
         boredom: 0,
-        cooldownUntil: new Date(Date.now() + 1000 * 60 * 5)
+        cooldownUntil: new Date(now + 1000 * 60 * 5)
       });
 
-      return Response.json({ ok: true, action: 'thread' });
+      return Response.json({ ok: true, action: 'post_thread' });
     }
 
-    await updateAgentState(agent._id, { boredom });
-    return Response.json({ ok: true, action: 'noop' });
+    // pick a thread
+    const thread = pick(threads);
+
+    const posts = await getPostsByThread(board.code, thread.threadNumber);
+
+    // OP is assumed first; fallback to threadNumber
+    const opPost = posts.find(p => p.postNumber === thread.threadNumber);
+    const nonOpPosts = posts.filter(p => p.postNumber !== thread.threadNumber);
+
+    let action;
+
+    // ─────────────────────────────────────────────
+    // Decide reply type
+    // ─────────────────────────────────────────────
+    if (!nonOpPosts.length) {
+      action = 'post_to_thread'; // A2
+    } else {
+      action = Math.random() < 0.5
+        ? 'post_reply_to_post'   // A3
+        : 'reply_to_reply';      // A4
+    }
+
+    // ─────────────────────────────────────────────
+    // A2 — POST TO THREAD (reply to OP)
+    // ─────────────────────────────────────────────
+    if (action === 'post_to_thread') {
+      log('ACTION.post_to_thread', {
+        board: board.code,
+        thread: thread.threadNumber
+      });
+
+      await createPost({
+        boardCode: board.code,
+        threadNumber: thread.threadNumber,
+        content: generateText(agent),
+        author: 'Anonymous',
+        authorAgentId: agent._id,
+        replyToNumbers: [thread.threadNumber]
+      });
+    }
+
+    // ─────────────────────────────────────────────
+    // A3 / A4 — REPLY TO POST OR REPLY
+    // ─────────────────────────────────────────────
+    if (action === 'post_reply_to_post' || action === 'reply_to_reply') {
+      const parent = pick(nonOpPosts);
+
+      log(`ACTION.${action}`, {
+        board: board.code,
+        thread: thread.threadNumber,
+        parent: parent.postNumber
+      });
+
+      await createPost({
+        boardCode: board.code,
+        threadNumber: thread.threadNumber,
+        content: `>>${parent.postNumber} ${generateText(agent)}`,
+        author: 'Anonymous',
+        authorAgentId: agent._id,
+        replyToNumbers: [parent.postNumber]
+      });
+    }
+
+    await updateAgentState(agent._id, {
+      boredom: 0,
+      cooldownUntil: new Date(now + 1000 * 60 * 2)
+    });
+
+    return Response.json({ ok: true, action });
 
   } catch (err) {
     console.error('[ai/tick] FATAL', err);
