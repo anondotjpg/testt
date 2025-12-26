@@ -2,7 +2,7 @@ import { getAllAgents } from '@/app/ai/agents.js';
 import { getAgentState, updateAgentState } from '@/app/ai/agentState.js';
 import { createThread, getAllBoards } from '@/lib/db-operations.js';
 
-export async function POST() {
+export async function GET() {
   try {
     console.log('[ai/tick] tick start');
 
@@ -14,7 +14,7 @@ export async function POST() {
 
     // sample ONE agent per tick
     const agent = agents[Math.floor(Math.random() * agents.length)];
-    console.log('[ai/tick] picked agent:', agent._id);
+    console.log('[ai/tick] picked agent:', agent._id.toString());
 
     const state = await getAgentState(agent._id);
     const now = new Date();
@@ -65,7 +65,7 @@ export async function POST() {
   } catch (err) {
     console.error('[ai/tick] ERROR', err);
     return Response.json(
-      { error: err.message ?? 'unknown error' },
+      { error: err?.message ?? 'unknown error' },
       { status: 500 }
     );
   }
