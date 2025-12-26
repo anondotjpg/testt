@@ -2,15 +2,17 @@
 
 import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
-import { BsPinAngleFill, BsLockFill } from 'react-icons/bs';
+import { BsPinAngleFill } from 'react-icons/bs';
 import { FaLock } from "react-icons/fa";
 import Post from '../components/Post';
 import PostForm from '../components/PostForm';
 
 export default function BoardPage({ params }) {
-  // Unwrap the params Promise using React.use()
+  // Unwrap params (Next 14.2+ / 15 behavior)
   const { boardCode } = use(params);
-  
+
+  console.log('[BoardPage] resolved boardCode:', boardCode);
+
   const [board, setBoard] = useState(null);
   const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,106 +22,128 @@ export default function BoardPage({ params }) {
   const [allBoards, setAllBoards] = useState([]);
 
   const fetchBoards = async () => {
+    console.log('[fetchBoards] fetching /api/boards');
     try {
       const response = await fetch('/api/boards');
-      if (response.ok) {
-        const boards = await response.json();
-        setAllBoards(boards);
+      console.log('[fetchBoards] status:', response.status);
+
+      if (!response.ok) {
+        console.error('[fetchBoards] non-OK response');
+        return;
       }
+
+      const boards = await response.json();
+      console.log('[fetchBoards] received boards:', boards);
+      setAllBoards(boards);
     } catch (error) {
-      console.error('Failed to fetch boards:', error);
+      console.error('[fetchBoards] error:', error);
     }
   };
 
   const fetchThreads = async (pageNum = 1, append = false) => {
+    console.log('[fetchThreads] start', { boardCode, pageNum, append });
+
     try {
-      const response = await fetch(`/api/${boardCode}/threads?page=${pageNum}`);
-      if (response.ok) {
-        const data = await response.json();
-        setBoard(data.board);
-        
-        // Sort threads: pinned posts first, then by replies in descending order
-        const sortedThreads = data.threads.sort((a, b) => {
-          // If one is pinned and the other isn't, prioritize pinned
-          if (a.isPinned && !b.isPinned) return -1;
-          if (!a.isPinned && b.isPinned) return 1;
-          
-          // If both are pinned or both are not pinned, sort by replies (descending)
-          return b.replies - a.replies;
-        });
-        
-        setThreads(prev => append ? [...prev, ...sortedThreads] : sortedThreads);
-        setHasMore(data.hasMore);
+      const url = `/api/${boardCode}/threads?page=${pageNum}`;
+      console.log('[fetchThreads] fetching:', url);
+
+      const response = await fetch(url);
+      console.log('[fetchThreads] response status:', response.status);
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('[fetchThreads] non-OK body:', text);
+        return;
       }
+
+      const data = await response.json();
+      console.log('[fetchThreads] response data:', data);
+
+      setBoard(data.board);
+
+      if (!data.board) {
+        console.warn('[fetchThreads] board is NULL from API');
+      }
+
+      const sortedThreads = data.threads.sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return b.replies - a.replies;
+      });
+
+      setThreads(prev =>
+        append ? [...prev, ...sortedThreads] : sortedThreads
+      );
+
+      setHasMore(data.hasMore);
     } catch (error) {
-      console.error('Failed to fetch threads:', error);
+      console.error('[fetchThreads] exception:', error);
     } finally {
       setLoading(false);
+      console.log('[fetchThreads] done');
     }
   };
 
   useEffect(() => {
+    console.log('[BoardPage] useEffect fired for boardCode:', boardCode);
     fetchBoards();
     fetchThreads();
   }, [boardCode]);
 
   const loadMore = () => {
+    console.log('[loadMore] clicked');
     if (hasMore && !loading) {
-      setPage(prev => prev + 1);
-      fetchThreads(page + 1, true);
+      const next = page + 1;
+      setPage(next);
+      fetchThreads(next, true);
     }
   };
 
   const handleThreadCreated = () => {
-    fetchThreads(); // Refresh the thread list
+    console.log('[handleThreadCreated] refreshing threads');
+    fetchThreads();
   };
 
   const toggleThreadVisibility = (threadNumber) => {
+    console.log('[toggleThreadVisibility]', threadNumber);
     setHiddenThreads(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(threadNumber)) {
-        newSet.delete(threadNumber);
-      } else {
-        newSet.add(threadNumber);
-      }
-      return newSet;
+      const next = new Set(prev);
+      next.has(threadNumber) ? next.delete(threadNumber) : next.add(threadNumber);
+      return next;
     });
   };
+
+  console.log('[render] loading:', loading, 'board:', board);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <img
-          src="/load.gif"
-          alt="Loading..."
-          className="w-24 h-24"
-        />
+        <img src="/load.gif" alt="Loading..." className="w-24 h-24" />
       </div>
     );
-  }  
+  }
 
   if (!board) {
+    console.warn('[render] board is null → showing Board not found');
     return <div className="text-center p-8">Board not found</div>;
   }
 
   return (
     <div className="max-w-sm md:max-w-6xl mx-auto px-4 pb-4">
-      {/* Top center board links */}
       <div className="text-center mb-4 md:mb-6">
         <div className="text-sm">
           [
-          {allBoards.map((b, index) => (
+          {allBoards.map((b, i) => (
             <span key={b.code}>
               <Link
                 href={`/${b.code}`}
-                title={`${b.name}${b.description ? ` - ${b.description}` : ''}`}
                 className={`hover:underline font-mono ${
                   b.code === boardCode ? 'text-red-600 font-bold' : 'text-blue-600'
                 }`}
               >
                 {b.code}
               </Link>
-              {index < allBoards.length - 1 && ' / '}
+              {i < allBoards.length - 1 && ' / '}
             </span>
           ))}
           ]
@@ -127,99 +151,41 @@ export default function BoardPage({ params }) {
       </div>
 
       <div className="pt-4 mb-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className='absolute left-1/2 -translate-x-1/2 mb-2'>
-            <h1 className="text-xl md:text-3xl font-bold text-[#890000]">/{board.code}/ - {board.name}</h1>
-            {board.description && (
-              <p className="text-gray-600 mt-1 text-center hidden md:block">{board.description}</p>
-            )}
-          </div>
-          <Link href="/" className="text-blue-600 hover:underline hidden md:block absolute top-4 left-4">
-            [Return to Boards]
-          </Link>
-        </div>
-        
-        {board.isNSFW && (
-          <div className='absolute top-2 right-2 hidden md:block'>
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 -mb-6 w-min whitespace-nowrap">
-              <strong>NSFW Warning</strong>
-            </div>
-          </div>
+        <h1 className="text-xl md:text-3xl font-bold text-[#890000] text-center">
+          /{board.code}/ - {board.name}
+        </h1>
+        {board.description && (
+          <p className="text-gray-600 mt-1 text-center hidden md:block">
+            {board.description}
+          </p>
         )}
       </div>
 
-      <div className='flex justify-center'>
-        <PostForm 
-            boardCode={boardCode} 
-            onPostCreated={handleThreadCreated}
-        />
+      <div className="flex justify-center">
+        <PostForm boardCode={boardCode} onPostCreated={handleThreadCreated} />
       </div>
 
       <div className="space-y-6">
-        {threads.map((thread) => {
-          const isHidden = hiddenThreads.has(thread.threadNumber);
-          
+        {threads.map(thread => {
+          const hidden = hiddenThreads.has(thread.threadNumber);
           return (
             <div key={thread.threadNumber} className="border border-gray-300 bg-white">
               <div className="p-4">
-                <div className="flex items-start">
-                  <button
-                    onClick={() => toggleThreadVisibility(thread.threadNumber)}
-                    className="text-gray-600 hover:text-gray-800 font-mono text-sm mr-2 mt-0.5 select-none cursor-pointer"
-                    title={isHidden ? "Show thread content" : "Hide thread content"}
-                  >
-                    [{isHidden ? '+' : '−'}]
-                  </button>
-                  
-                  <div className="flex-1">
-                    {thread.isPinned && (
-                      <BsPinAngleFill className="inline text-red-600 mr-2" size={16} title="Pinned" />
-                    )}
-                    {thread.isLocked && (
-                      <FaLock className="inline text-gray-600 mr-2" size={14} title="Locked" />
-                    )}
-                    <Link 
-                      href={`/${boardCode}/thread/${thread.threadNumber}`}
-                      className="text-blue-600 hover:underline font-bold"
-                    >
-                      {thread.subject || `Thread #${thread.threadNumber}`}
-                    </Link>
-                    <span className="text-gray-500 text-sm ml-2">
-                      ({thread.replies} replies, {thread.images} images)
-                    </span>
-                    <Link
-                        href={`/${boardCode}/thread/${thread.threadNumber}`}
-                        className="text-gray-800 text-sm ml-2"
-                    >
-                      [reply]
-                    </Link>
-                  </div>
-                </div>
+                <button
+                  onClick={() => toggleThreadVisibility(thread.threadNumber)}
+                  className="font-mono text-sm mr-2"
+                >
+                  [{hidden ? '+' : '−'}]
+                </button>
 
-                {!isHidden && (
-                  <>
-                    <Post post={thread} isOP={true} boardCode={boardCode} />
+                <Link
+                  href={`/${boardCode}/thread/${thread.threadNumber}`}
+                  className="text-blue-600 font-bold"
+                >
+                  {thread.subject || `Thread #${thread.threadNumber}`}
+                </Link>
 
-                    {thread.recentPosts && thread.recentPosts.length > 0 && (
-                      <div className="mt-4 pl-4 border-l-2 border-gray-300">
-                        <div className="text-sm text-gray-600 mb-2">Recent replies:</div>
-                        {thread.recentPosts.map((post) => (
-                          <div key={post.postNumber} className="mb-2">
-                            <Post post={post} boardCode={boardCode} />
-                          </div>
-                        ))}
-                        {thread.replies > 5 && (
-                          <Link
-                            href={`/${boardCode}/thread/${thread.threadNumber}`}
-                            className="text-blue-600 hover:underline text-sm"
-                          >
-                            View all {thread.replies} replies →
-                          </Link>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
+                {!hidden && <Post post={thread} isOP boardCode={boardCode} />}
               </div>
             </div>
           );
@@ -231,9 +197,9 @@ export default function BoardPage({ params }) {
           <button
             onClick={loadMore}
             disabled={loading}
-            className="bg-gray-200 hover:bg-gray-300 px-6 py-2 border border-gray-400 disabled:opacity-50 cursor-pointer"
+            className="bg-gray-200 px-6 py-2 border"
           >
-            {loading ? 'Loading...' : 'Load More Threads'}
+            {loading ? 'Loading…' : 'Load More Threads'}
           </button>
         </div>
       )}
