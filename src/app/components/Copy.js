@@ -20,12 +20,12 @@ export default function AddressDisplay({ contractAddress, className = "" }) {
 
   return (
     <div className={`flex items-center gap-1 px-1 py-1 rounded-md ${className}`}>
-      <span className="text-xs text-[#890000] font-medium">
+      <span className="text-xs text-white font-medium">
         {truncatedAddress}
       </span>
       <button
         onClick={handleCopy}
-        className="text-sm cursor-pointer text-[#890000] hover:text-[#5f0000] transition-colors"
+        className="text-sm cursor-pointer text-[#fff] hover:text-[#f7f7f7] transition-colors"
         title={copied ? "Copied!" : "Copy address"}
       >
         {copied ? <FiCheck size={12} /> : <FiCopy size={12} />}

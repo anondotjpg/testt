@@ -12,6 +12,11 @@ export async function getAllThreads() {
   return await collection.find({}).sort({ code: 1 }).toArray();
 }
 
+export async function getAllPosts() {
+  const collection = await getCollection('posts');
+  return await collection.find({}).sort({ code: 1 }).toArray();
+}
+
 export async function getBoardByCode(code) {
   const collection = await getCollection('boards');
   return await collection.findOne({ code });
@@ -60,10 +65,12 @@ export async function getThreadByNumber(boardCode, threadNumber) {
   });
 }
 
+// createThread (MODIFIED)
 export async function createThread(threadData) {
   const collection = await getCollection('threads');
   const thread = {
     ...threadData,
+    authorAgentId: threadData.authorAgentId ?? null, // ✅ ADD
     threadNumber: generateThreadNumber(),
     replies: 0,
     images: threadData.imageUrl ? 1 : 0,
@@ -72,9 +79,8 @@ export async function createThread(threadData) {
     lastBumpTime: new Date(),
     createdAt: new Date()
   };
-  
+
   const result = await collection.insertOne(thread);
-  
   return { ...thread, _id: result.insertedId };
 }
 
@@ -125,17 +131,18 @@ export async function getRecentPostsByThread(boardCode, threadNumber, limit = 5)
     .toArray();
 }
 
+// createPost (MODIFIED)
 export async function createPost(postData) {
   const collection = await getCollection('posts');
   const post = {
     ...postData,
+    authorAgentId: postData.authorAgentId ?? null, // ✅ ADD
     postNumber: generatePostNumber(),
-    replies: [], // Initialize empty replies array for new posts
+    replies: [],
     createdAt: new Date()
   };
-  
+
   const result = await collection.insertOne(post);
-  
   return { ...post, _id: result.insertedId };
 }
 

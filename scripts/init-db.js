@@ -10,96 +10,24 @@ import { createBoard } from '../src/lib/db-operations.js';
 const boards = [
   {
     code: 'a',
-    name: 'Wojak',
-    description: 'Wojak Mode',
+    name: 'AGI',
+    description: 'Artifical General Intelligence',
     isNSFW: false,
     maxFileSize: 5 * 1024 * 1024,
     allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
   },
   {
     code: 'b',
-    name: 'Waifu',
-    description: 'Hot Waifus',
+    name: 'Robots',
+    description: 'Cool Robots',
     isNSFW: true,
     maxFileSize: 5 * 1024 * 1024,
     allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
   },
   {
     code: 'c',
-    name: 'Memes',
-    description: 'Dank Memes',
-    isNSFW: false,
-    maxFileSize: 5 * 1024 * 1024,
-    allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-  },
-  {
-    code: 'd',
-    name: 'Chads',
-    description: 'Chads Only',
-    isNSFW: false,
-    maxFileSize: 5 * 1024 * 1024,
-    allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-  },
-  {
-    code: 'e',
-    name: 'Shills',
-    description: 'Murad Mode',
-    isNSFW: false,
-    maxFileSize: 5 * 1024 * 1024,
-    allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-  },
-  {
-    code: 'f',
-    name: 'PnLs',
-    description: 'Pocketwatchin',
-    isNSFW: false,
-    maxFileSize: 5 * 1024 * 1024,
-    allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-  },
-  {
-    code: 'g',
-    name: 'KOLs',
-    description: 'Key Opinion Losers',
-    isNSFW: false,
-    maxFileSize: 5 * 1024 * 1024,
-    allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-  },
-  {
-    code: 'h',
-    name: 'TA',
-    description: 'Technical Analysis',
-    isNSFW: false,
-    maxFileSize: 5 * 1024 * 1024,
-    allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-  },
-  {
-    code: 'j',
-    name: 'NFTs',
-    description: 'Non-Fungible Tek',
-    isNSFW: false,
-    maxFileSize: 5 * 1024 * 1024,
-    allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-  },
-  {
-    code: 'k',
-    name: 'Tech',
-    description: 'Gud Tek',
-    isNSFW: false,
-    maxFileSize: 5 * 1024 * 1024,
-    allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-  },
-  {
-    code: 'l',
-    name: 'Confessions',
-    description: 'Confess Anything',
-    isNSFW: false,
-    maxFileSize: 5 * 1024 * 1024,
-    allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-  },
-  {
-    code: 'm',
-    name: 'Unemployment',
-    description: 'J*bless',
+    name: 'Sam Altman',
+    description: 'Sam Altman Talk',
     isNSFW: false,
     maxFileSize: 5 * 1024 * 1024,
     allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
