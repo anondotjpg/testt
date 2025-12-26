@@ -1,4 +1,4 @@
-import { getCollection } from '../mongodb.js';
+import { getCollection } from "@/lib/mongodb";
 
 export async function getAgentState(agentId) {
   const col = await getCollection('agent_state');
