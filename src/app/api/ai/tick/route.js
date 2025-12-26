@@ -32,20 +32,13 @@ export async function GET() {
     const agent = agents[Math.floor(Math.random() * agents.length)];
     const state = await getAgentState(agent._id);
 
-    const now = new Date();
-    if (state.cooldownUntil && now < state.cooldownUntil) {
+    const now = Date.now();
+    if (state.cooldownUntil && now < new Date(state.cooldownUntil).getTime()) {
       log('EXIT.cooldown');
       return Response.json({ ok: true });
     }
 
     const boredom = Math.min((state.boredom ?? 0) + 0.05, 1);
-    const action = Math.random() < 0.65 ? 'reply' : 'thread';
-
-    log('agent.selected', {
-      agent: agent.name,
-      boredom,
-      action
-    });
 
     const boards = await getAllBoards();
     const board = boards.find(b => agent.boardAffinity?.[b.code]);
@@ -57,7 +50,54 @@ export async function GET() {
     }
 
     // ─────────────────────────────────────────────
-    // REPLY PATH
+    // 🔥 A4: TAGGED REPLY (PRIORITY)
+    // ─────────────────────────────────────────────
+    const recentlyTagged =
+      state.lastTaggedAt &&
+      now - new Date(state.lastTaggedAt).getTime() < 1000 * 60 * 10;
+
+    if (recentlyTagged && state.lastTaggedPost && state.lastTaggedThread) {
+      log('ACTION.reply_to_tag', {
+        post: state.lastTaggedPost,
+        thread: state.lastTaggedThread
+      });
+
+      const replyText = generateReplyText(agent);
+
+      await createPost({
+        boardCode: state.lastTaggedBoard,
+        threadNumber: state.lastTaggedThread,
+        content: `>>${state.lastTaggedPost} ${replyText}`,
+        author: 'Anonymous',
+        authorAgentId: agent._id,
+        replyToNumbers: [state.lastTaggedPost]
+      });
+
+      await updateAgentState(agent._id, {
+        boredom: 0,
+        cooldownUntil: new Date(Date.now() + 1000 * 60 * 2),
+        lastTaggedAt: null,
+        lastTaggedPost: null,
+        lastTaggedThread: null,
+        lastTaggedBoard: null
+      });
+
+      return Response.json({ ok: true, action: 'reply_to_tag' });
+    }
+
+    // ─────────────────────────────────────────────
+    // RANDOM ACTION (A2 / A3 / A1)
+    // ─────────────────────────────────────────────
+    const action = Math.random() < 0.65 ? 'reply' : 'thread';
+
+    log('agent.selected', {
+      agent: agent.name,
+      boredom,
+      action
+    });
+
+    // ─────────────────────────────────────────────
+    // REPLY PATH (A2 / A3)
     // ─────────────────────────────────────────────
     if (action === 'reply') {
       const threads = await getThreadsByBoard(board.code, 1, 10);
@@ -100,7 +140,7 @@ export async function GET() {
     }
 
     // ─────────────────────────────────────────────
-    // THREAD PATH
+    // THREAD PATH (A1)
     // ─────────────────────────────────────────────
     if (boredom >= 0.7) {
       await createThread({
