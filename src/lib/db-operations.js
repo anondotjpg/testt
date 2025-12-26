@@ -1,37 +1,37 @@
 import { getCollection } from './mongodb.js';
 import { generatePostNumber, generateThreadNumber } from './utils.js';
+import { updateAgentState } from '@/app/ai/agentState';
 
 /* =========================================================
    BOARDS
    ========================================================= */
 
 export async function getAllBoards() {
-  const collection = await getCollection('boards');
-  return await collection.find({}).sort({ code: 1 }).toArray();
+  return (await getCollection('boards'))
+    .find({})
+    .sort({ code: 1 })
+    .toArray();
 }
 
 export async function getBoardByCode(code) {
-  const collection = await getCollection('boards');
-  return await collection.findOne({ code });
+  return (await getCollection('boards')).findOne({ code });
 }
 
 export async function createBoard(boardData) {
-  const collection = await getCollection('boards');
+  const boards = await getCollection('boards');
   const board = {
     ...boardData,
     postCount: 0,
     createdAt: new Date()
   };
-
-  const result = await collection.insertOne(board);
-  return { ...board, _id: result.insertedId };
+  const res = await boards.insertOne(board);
+  return { ...board, _id: res.insertedId };
 }
 
-export async function incrementBoardPostCount(boardCode, increment = 1) {
-  const collection = await getCollection('boards');
-  return await collection.updateOne(
+export async function incrementBoardPostCount(boardCode, inc = 1) {
+  await (await getCollection('boards')).updateOne(
     { code: boardCode },
-    { $inc: { postCount: increment } }
+    { $inc: { postCount: inc } }
   );
 }
 
@@ -39,83 +39,51 @@ export async function incrementBoardPostCount(boardCode, increment = 1) {
    THREADS
    ========================================================= */
 
-export async function getThreadsByBoard(boardCode, page = 1, limit = 10) {
-  const collection = await getCollection('threads');
-  const skip = (page - 1) * limit;
+async function allocateThreadNumber() {
+  const threads = await getCollection('threads');
+  while (true) {
+    const n = generateThreadNumber();
+    if (!(await threads.findOne({ threadNumber: n }))) return n;
+  }
+}
 
-  return await collection
+export async function getThreadsByBoard(boardCode, page = 1, limit = 10) {
+  return (await getCollection('threads'))
     .find({ boardCode })
     .sort({ isPinned: -1, lastBumpTime: -1 })
-    .skip(skip)
+    .skip((page - 1) * limit)
     .limit(limit)
     .toArray();
 }
 
 export async function getThreadByNumber(boardCode, threadNumber) {
-  const collection = await getCollection('threads');
-  return await collection.findOne({
+  return (await getCollection('threads')).findOne({
     boardCode,
     threadNumber: parseInt(threadNumber)
   });
 }
 
-export async function updateThread(boardCode, threadNumber, updateData) {
-  const collection = await getCollection('threads');
-  return await collection.updateOne(
-    { boardCode, threadNumber: parseInt(threadNumber) },
-    { $set: updateData }
-  );
-}
-
-export async function incrementThreadStats(
-  boardCode,
-  threadNumber,
-  stats,
-  isSage = false
-) {
-  const collection = await getCollection('threads');
-
-  const updateData = { $inc: stats };
-
-  // bump only if replies added and not sage
+export async function incrementThreadStats(boardCode, threadNumber, stats, isSage) {
+  const update = { $inc: stats };
   if (stats?.replies && !isSage) {
-    updateData.$set = { lastBumpTime: new Date() };
+    update.$set = { lastBumpTime: new Date() };
   }
 
-  return await collection.updateOne(
+  await (await getCollection('threads')).updateOne(
     { boardCode, threadNumber: parseInt(threadNumber) },
-    updateData
+    update
   );
 }
 
-/**
- * Allocate a truly unique thread number (no collisions with existing threads).
- * Uses generateThreadNumber() but retries until free.
- */
-async function allocateThreadNumber() {
-  const collection = await getCollection('threads');
-  while (true) {
-    const threadNumber = generateThreadNumber();
-    const existing = await collection.findOne({ threadNumber });
-    if (!existing) return threadNumber;
-  }
-}
-
-/**
- * createThread (authoritative)
- * - inserts thread
- * - increments board post count (+1) because threads count as posts
- */
 export async function createThread(threadData) {
   const threads = await getCollection('threads');
-
   const threadNumber = await allocateThreadNumber();
 
-  const hasImage =
-    !!threadData?.imageUrl ||
-    !!threadData?.filename ||
-    !!threadData?.fileUrl ||
-    !!threadData?.thumbnailUrl;
+  const hasImage = Boolean(
+    threadData?.imageUrl ||
+    threadData?.filename ||
+    threadData?.thumbnailUrl
+  );
 
   const thread = {
     ...threadData,
@@ -129,101 +97,54 @@ export async function createThread(threadData) {
     createdAt: new Date()
   };
 
-  const result = await threads.insertOne(thread);
-
-  // ✅ single source of truth: board count updated here
+  const res = await threads.insertOne(thread);
   await incrementBoardPostCount(thread.boardCode, 1);
 
-  return { ...thread, _id: result.insertedId };
+  return { ...thread, _id: res.insertedId };
 }
 
 /* =========================================================
    POSTS
    ========================================================= */
 
+async function allocatePostNumber() {
+  const posts = await getCollection('posts');
+  const threads = await getCollection('threads');
+
+  while (true) {
+    const n = generatePostNumber();
+    if (
+      !(await posts.findOne({ postNumber: n })) &&
+      !(await threads.findOne({ threadNumber: n }))
+    ) {
+      return n;
+    }
+  }
+}
+
 export async function getPostsByThread(boardCode, threadNumber) {
-  const collection = await getCollection('posts');
-  return await collection
-    .find({
-      boardCode,
-      threadNumber: parseInt(threadNumber)
-    })
+  return (await getCollection('posts'))
+    .find({ boardCode, threadNumber: parseInt(threadNumber) })
     .sort({ createdAt: 1 })
     .toArray();
 }
 
 export async function getRecentPostsByThread(boardCode, threadNumber, limit = 5) {
-  const collection = await getCollection('posts');
-  return await collection
-    .find({
-      boardCode,
-      threadNumber: parseInt(threadNumber)
-    })
+  return (await getCollection('posts'))
+    .find({ boardCode, threadNumber: parseInt(threadNumber) })
     .sort({ createdAt: -1 })
     .limit(limit)
     .toArray();
 }
 
-/**
- * Allocate a truly unique post number (no collisions with posts OR threads).
- */
-async function allocatePostNumber() {
-  const postCollection = await getCollection('posts');
-  const threadCollection = await getCollection('threads');
-
-  while (true) {
-    const postNumber = generatePostNumber();
-
-    const [existingPost, existingThread] = await Promise.all([
-      postCollection.findOne({ postNumber }),
-      threadCollection.findOne({ threadNumber: postNumber })
-    ]);
-
-    if (!existingPost && !existingThread) return postNumber;
-  }
-}
-
-/**
- * Add this postNumber to all parents' replies[] arrays.
- * NOTE: parents are posts only. Threads store replies count, not replies[].
- */
-export async function addReplyToParentPosts(
-  boardCode,
-  threadNumber,
-  postNumber,
-  replyToNumbers
-) {
-  const targets = (replyToNumbers || [])
-    .map(n => parseInt(n))
-    .filter(n => Number.isFinite(n) && n > 0);
-
-  if (!targets.length) return;
-
-  const posts = await getCollection('posts');
-
-  await posts.updateMany(
-    {
-      boardCode,
-      threadNumber: parseInt(threadNumber),
-      postNumber: { $in: targets }
-    },
-    { $addToSet: { replies: postNumber } }
-  );
-}
-
-/**
- * Validate reply targets exist as POSTS in the same thread.
- * (Humans are already blocked from tagging OP/threadNumber.)
- */
-export async function validateReplyTargets(boardCode, threadNumber, replyToNumbers) {
-  const targets = (replyToNumbers || [])
+export async function validateReplyTargets(boardCode, threadNumber, replyTo) {
+  const targets = (replyTo || [])
     .map(n => parseInt(n))
     .filter(n => Number.isFinite(n) && n > 0);
 
   if (!targets.length) return [];
 
   const posts = await getCollection('posts');
-
   const existing = await posts
     .find({
       boardCode,
@@ -236,28 +157,41 @@ export async function validateReplyTargets(boardCode, threadNumber, replyToNumbe
   return existing.map(p => p.postNumber);
 }
 
+export async function addReplyToParentPosts(boardCode, threadNumber, postNumber, parents) {
+  const targets = (parents || [])
+    .map(n => parseInt(n))
+    .filter(n => Number.isFinite(n) && n > 0);
+
+  if (!targets.length) return;
+
+  await (await getCollection('posts')).updateMany(
+    {
+      boardCode,
+      threadNumber: parseInt(threadNumber),
+      postNumber: { $in: targets }
+    },
+    { $addToSet: { replies: postNumber } }
+  );
+}
+
 /**
- * createPost (authoritative)
- * - inserts post
- * - reply graph update (parents' replies[])
- * - thread stats increment (+replies, +images), with sage bump control
- * - board post count increment (+1)
+ * =========================================================
+ * createPost — AUTHORITATIVE (A1–A5)
+ * =========================================================
  */
 export async function createPost(postData) {
   const posts = await getCollection('posts');
-
   const postNumber = await allocatePostNumber();
 
   const isSage = (postData?.email || '').toLowerCase() === 'sage';
+  const hasImage = Boolean(
+    postData?.imageUrl ||
+    postData?.filename ||
+    postData?.thumbnailUrl
+  );
 
-  const hasImage =
-    !!postData?.imageUrl ||
-    !!postData?.filename ||
-    !!postData?.fileUrl ||
-    !!postData?.thumbnailUrl;
-
-  const replyTo = Array.isArray(postData?.replyTo)
-    ? postData.replyTo.map(n => parseInt(n)).filter(n => Number.isFinite(n) && n > 0)
+  const replyTo = Array.isArray(postData.replyTo)
+    ? postData.replyTo.map(n => parseInt(n)).filter(n => n > 0)
     : [];
 
   const post = {
@@ -269,9 +203,9 @@ export async function createPost(postData) {
     createdAt: new Date()
   };
 
-  const result = await posts.insertOne(post);
+  const res = await posts.insertOne(post);
 
-  // ✅ reply graph
+  // ───── reply graph
   await addReplyToParentPosts(
     post.boardCode,
     post.threadNumber,
@@ -279,55 +213,71 @@ export async function createPost(postData) {
     replyTo
   );
 
-  // ✅ thread stats (+bump unless sage)
-  const threadStats = { replies: 1 };
-  if (hasImage) threadStats.images = 1;
+  // ───── stats
+  const stats = { replies: 1 };
+  if (hasImage) stats.images = 1;
 
   await incrementThreadStats(
     post.boardCode,
     post.threadNumber,
-    threadStats,
+    stats,
     isSage
   );
 
-  // ✅ board stats
   await incrementBoardPostCount(post.boardCode, 1);
 
-  return { ...post, _id: result.insertedId };
+  // ─────────────────────────────────────────────
+  // A5 — TAG DETECTION (CRITICAL PATH)
+  // ─────────────────────────────────────────────
+  for (const parentNumber of replyTo) {
+    const parent = await posts.findOne({ postNumber: parentNumber });
+    if (!parent?.authorAgentId) continue;
+
+    // ignore self-tags
+    if (
+      post.authorAgentId &&
+      parent.authorAgentId.toString() === post.authorAgentId.toString()
+    ) {
+      continue;
+    }
+
+    await updateAgentState(parent.authorAgentId, {
+      lastTaggedAt: new Date(),
+      lastTaggedBoard: post.boardCode,
+      lastTaggedThread: post.threadNumber,
+      lastTaggedPost: parentNumber
+    });
+  }
+
+  return { ...post, _id: res.insertedId };
 }
 
 /* =========================================================
-   OPTIONAL UTILITIES
+   UTILITIES
    ========================================================= */
 
 export async function getAllThreads() {
-  const collection = await getCollection('threads');
-  return await collection.find({}).sort({ code: 1 }).toArray();
+  return (await getCollection('threads')).find({}).toArray();
 }
 
 export async function getAllPosts() {
-  const collection = await getCollection('posts');
-  return await collection.find({}).sort({ code: 1 }).toArray();
+  return (await getCollection('posts')).find({}).toArray();
 }
 
 export async function syncBoardPostCounts() {
-  const boardCollection = await getCollection('boards');
-  const postCollection = await getCollection('posts');
-  const threadCollection = await getCollection('threads');
+  const boards = await getCollection('boards');
+  const posts = await getCollection('posts');
+  const threads = await getCollection('threads');
 
-  const boards = await boardCollection.find({}).toArray();
-
-  for (const board of boards) {
-    const [postCount, threadCount] = await Promise.all([
-      postCollection.countDocuments({ boardCode: board.code }),
-      threadCollection.countDocuments({ boardCode: board.code })
+  for (const board of await boards.find({}).toArray()) {
+    const [p, t] = await Promise.all([
+      posts.countDocuments({ boardCode: board.code }),
+      threads.countDocuments({ boardCode: board.code })
     ]);
 
-    await boardCollection.updateOne(
+    await boards.updateOne(
       { code: board.code },
-      { $set: { postCount: postCount + threadCount } }
+      { $set: { postCount: p + t } }
     );
   }
-
-  console.log('Board post counts synchronized successfully');
 }

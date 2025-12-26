@@ -3,6 +3,9 @@ import {
   getPostsByThread,
   createThread,
   createPost,
+  incrementThreadStats,
+  incrementBoardPostCount,
+  addReplyToParentPosts,
   getAllBoards
 } from '@/lib/db-operations.js';
 
@@ -13,25 +16,23 @@ function log(step, data = {}) {
   console.log(`[ai/tick] ${step}`, Object.keys(data).length ? data : '');
 }
 
-function generateText(agent, type) {
-  const persona = agent.personaSeed || '';
-
-  if (type === 'thread') {
-    if (persona.includes('skeptic')) return 'something feels off';
-    if (persona.includes('aggressive')) return 'this is obvious';
-    if (persona.includes('sarcastic')) return 'so we’re doing this now?';
-    return 'thoughts?';
-  }
-
-  if (persona.includes('skeptic')) return 'source?';
-  if (persona.includes('aggressive')) return 'this is obvious';
-  if (persona.includes('sarcastic')) return 'yeah ok';
-  if (persona.includes('doom')) return 'this ends badly';
-  return 'interesting';
-}
-
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function generateText(agent, type = 'reply') {
+  const p = agent.personaSeed || '';
+  if (type === 'thread') {
+    if (p.includes('skeptic')) return 'something feels off';
+    if (p.includes('aggressive')) return 'this is obvious';
+    if (p.includes('sarcastic')) return 'so we’re doing this now?';
+    return 'thoughts?';
+  }
+  if (p.includes('skeptic')) return 'source?';
+  if (p.includes('aggressive')) return 'this is obvious';
+  if (p.includes('sarcastic')) return 'yeah ok';
+  if (p.includes('doom')) return 'this ends badly';
+  return 'interesting';
 }
 
 export async function GET() {
@@ -43,34 +44,77 @@ export async function GET() {
 
     const agent = pick(agents);
     const state = await getAgentState(agent._id);
-
     const now = Date.now();
+
     if (state.cooldownUntil && now < new Date(state.cooldownUntil).getTime()) {
       log('EXIT.cooldown', { agent: agent.name });
       return Response.json({ ok: true });
     }
 
-    const boredom = Math.min((state.boredom ?? 0) + 0.05, 1);
-
     const boards = await getAllBoards();
     const board = boards.find(b => agent.boardAffinity?.[b.code]);
+    if (!board) return Response.json({ ok: true });
 
-    if (!board) {
-      await updateAgentState(agent._id, { boredom });
-      log('EXIT.no_board');
-      return Response.json({ ok: true });
+    // ─────────────────────────────
+    // 🔥 A5 — PRIORITY REPLY TO TAG
+    // ─────────────────────────────
+    if (
+      state.lastTaggedPost &&
+      state.lastTaggedThread &&
+      state.lastTaggedBoard &&
+      now - new Date(state.lastTaggedAt).getTime() < 1000 * 60 * 10
+    ) {
+      log('ACTION.reply_to_tag', {
+        post: state.lastTaggedPost
+      });
+
+      const post = await createPost({
+        boardCode: state.lastTaggedBoard,
+        threadNumber: state.lastTaggedThread,
+        content: `>>${state.lastTaggedPost} ${generateText(agent)}`,
+        author: 'Anonymous',
+        authorAgentId: agent._id,
+        replyTo: [state.lastTaggedPost]
+      });
+
+      await addReplyToParentPosts(
+        state.lastTaggedBoard,
+        state.lastTaggedThread,
+        post.postNumber,
+        [state.lastTaggedPost]
+      );
+
+      await incrementThreadStats(
+        state.lastTaggedBoard,
+        state.lastTaggedThread,
+        { replies: 1 }
+      );
+
+      await incrementBoardPostCount(state.lastTaggedBoard, 1);
+
+      await updateAgentState(agent._id, {
+        boredom: 0,
+        cooldownUntil: new Date(now + 1000 * 60 * 2),
+        lastTaggedPost: null,
+        lastTaggedThread: null,
+        lastTaggedBoard: null,
+        lastTaggedAt: null
+      });
+
+      return Response.json({ ok: true, action: 'reply_to_tag' });
     }
 
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
     // LOAD THREADS
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────
     const threads = await getThreadsByBoard(board.code, 1, 10);
+    const boredom = Math.min((state.boredom ?? 0) + 0.05, 1);
 
-    // ─────────────────────────────────────────────
-    // A1 — POST THREAD (bootstrap or bored)
-    // ─────────────────────────────────────────────
-    if (!threads.length || boredom >= 0.14) {
-      log('ACTION.post_thread', { board: board.code });
+    // ─────────────────────────────
+    // A1 — CREATE THREAD
+    // ─────────────────────────────
+    if (!threads.length || boredom >= 0.7) {
+      log('ACTION.post_thread');
 
       await createThread({
         boardCode: board.code,
@@ -80,6 +124,8 @@ export async function GET() {
         authorAgentId: agent._id
       });
 
+      await incrementBoardPostCount(board.code, 1);
+
       await updateAgentState(agent._id, {
         boredom: 0,
         cooldownUntil: new Date(now + 1000 * 60 * 5)
@@ -88,75 +134,60 @@ export async function GET() {
       return Response.json({ ok: true, action: 'post_thread' });
     }
 
-    // pick a thread
+    // ─────────────────────────────
+    // PICK THREAD + POSTS
+    // ─────────────────────────────
     const thread = pick(threads);
-
     const posts = await getPostsByThread(board.code, thread.threadNumber);
+    const nonOp = posts.filter(p => p.postNumber !== thread.threadNumber);
 
-    // OP is assumed first; fallback to threadNumber
-    const opPost = posts.find(p => p.postNumber === thread.threadNumber);
-    const nonOpPosts = posts.filter(p => p.postNumber !== thread.threadNumber);
+    let parentNumber;
 
-    let action;
-
-    // ─────────────────────────────────────────────
-    // Decide reply type
-    // ─────────────────────────────────────────────
-    if (!nonOpPosts.length) {
-      action = 'post_to_thread'; // A2
+    if (!nonOp.length) {
+      // A2 — reply to OP
+      parentNumber = thread.threadNumber;
     } else {
-      action = Math.random() < 0.5
-        ? 'post_reply_to_post'   // A3
-        : 'reply_to_reply';      // A4
+      // A3 / A4 — reply to post or reply
+      parentNumber = pick(nonOp).postNumber;
     }
 
-    // ─────────────────────────────────────────────
-    // A2 — POST TO THREAD (reply to OP)
-    // ─────────────────────────────────────────────
-    if (action === 'post_to_thread') {
-      log('ACTION.post_to_thread', {
-        board: board.code,
-        thread: thread.threadNumber
-      });
+    log('ACTION.reply', {
+      thread: thread.threadNumber,
+      parent: parentNumber
+    });
 
-      await createPost({
-        boardCode: board.code,
-        threadNumber: thread.threadNumber,
-        content: generateText(agent),
-        author: 'Anonymous',
-        authorAgentId: agent._id,
-        replyToNumbers: [thread.threadNumber]
-      });
-    }
+    const post = await createPost({
+      boardCode: board.code,
+      threadNumber: thread.threadNumber,
+      content: parentNumber === thread.threadNumber
+        ? generateText(agent)
+        : `>>${parentNumber} ${generateText(agent)}`,
+      author: 'Anonymous',
+      authorAgentId: agent._id,
+      replyTo: [parentNumber]
+    });
 
-    // ─────────────────────────────────────────────
-    // A3 / A4 — REPLY TO POST OR REPLY
-    // ─────────────────────────────────────────────
-    if (action === 'post_reply_to_post' || action === 'reply_to_reply') {
-      const parent = pick(nonOpPosts);
+    await addReplyToParentPosts(
+      board.code,
+      thread.threadNumber,
+      post.postNumber,
+      [parentNumber]
+    );
 
-      log(`ACTION.${action}`, {
-        board: board.code,
-        thread: thread.threadNumber,
-        parent: parent.postNumber
-      });
+    await incrementThreadStats(
+      board.code,
+      thread.threadNumber,
+      { replies: 1 }
+    );
 
-      await createPost({
-        boardCode: board.code,
-        threadNumber: thread.threadNumber,
-        content: `>>${parent.postNumber} ${generateText(agent)}`,
-        author: 'Anonymous',
-        authorAgentId: agent._id,
-        replyToNumbers: [parent.postNumber]
-      });
-    }
+    await incrementBoardPostCount(board.code, 1);
 
     await updateAgentState(agent._id, {
       boredom: 0,
       cooldownUntil: new Date(now + 1000 * 60 * 2)
     });
 
-    return Response.json({ ok: true, action });
+    return Response.json({ ok: true, action: 'reply' });
 
   } catch (err) {
     console.error('[ai/tick] FATAL', err);
