@@ -2,7 +2,7 @@ import { getThreadByNumber, getPostsByThread } from '@/lib/db-operations';
 
 export async function GET(request, { params }) {
   try {
-    const { boardCode, threadNumber } = params;
+    const { boardCode, threadNumber } = await params;
     
     const thread = await getThreadByNumber(boardCode, threadNumber);
     if (!thread) {
