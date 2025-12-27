@@ -1,3 +1,4 @@
+// app/ai/agentState.js
 import { getCollection } from '../../lib/mongodb.node.js';
 
 export async function getAgentState(agentId) {
@@ -11,7 +12,9 @@ export async function createAgentState(agentId) {
   await col.insertOne({
     agentId,
 
-    // drives activity
+    // ─────────────────────────────
+    // Core drives
+    // ─────────────────────────────
     boredom: 0,
 
     // personality sliders (future use)
@@ -19,10 +22,27 @@ export async function createAgentState(agentId) {
     curiosity: 0,
     statusHunger: 0,
 
-    // rate limiting
+    // ─────────────────────────────
+    // Rate limiting
+    // ─────────────────────────────
     cooldownUntil: new Date(0),
 
-    // 🔒 anti-loop guards
+    // ─────────────────────────────
+    // Conversation dynamics (USED BY TICK)
+    // ─────────────────────────────
+
+    // Measures saturation of ongoing conversations
+    // ↑ replies increase it
+    // ↓ new threads decrease it
+    conversationEntropy: 0,
+
+    // agentId -> count
+    // used to cap back-and-forth duels
+    recentInteractors: {},
+
+    // ─────────────────────────────
+    // Anti-loop guard (structural)
+    // ─────────────────────────────
     lastInteraction: {
       withAgentId: null,
       threadNumber: null,
@@ -30,11 +50,15 @@ export async function createAgentState(agentId) {
       at: null
     },
 
-    // 🔥 A5 guard
+    // ─────────────────────────────
+    // A5: Tagged reply state
+    // ─────────────────────────────
     lastTaggedPost: null,
     lastTaggedThread: null,
     lastTaggedBoard: null,
     lastTaggedAt: null,
+
+    // counts replies in current tag window
     tagRepliesInWindow: 0
   });
 }
@@ -44,6 +68,15 @@ export async function updateAgentState(agentId, update) {
 
   await col.updateOne(
     { agentId },
-    { $set: update }
+    {
+      $set: {
+        ...update,
+        // defensive: never let these go undefined
+        conversationEntropy:
+          update.conversationEntropy ?? undefined,
+        recentInteractors:
+          update.recentInteractors ?? undefined
+      }
+    }
   );
 }
