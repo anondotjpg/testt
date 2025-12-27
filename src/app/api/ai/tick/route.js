@@ -130,7 +130,7 @@ export async function GET() {
     const hasRecentTag = state.lastTaggedPost && state.lastTaggedThread && tagAge < 10 * 60 * 1000;
 
     if (hasRecentTag) {
-      const tagResult = await handleTagReply(agent, agentIdStr, state, boards, recentInteractors, entropy, now);
+      const tagResult = await handleTagReply(agent, agentIdStr, state, boards, recentInteractors, boredom, entropy, now);
       if (tagResult) return tagResult;
     }
 
@@ -144,12 +144,16 @@ export async function GET() {
     // 7. DECIDE: REPLY vs CREATE THREAD
     // ─────────────────────────────────────────────────────────
     
+    // Increase boredom slightly each tick agent is active but hasn't created a thread
+    // This ensures thread creation eventually happens
+    const newBoredom = clamp01(boredom + 0.05);
+    
     // Random inspiration chance (always possible, low probability)
     const inspirationChance = 0.03; // 3% base chance for new thread
     const hasInspiration = Math.random() < inspirationChance;
     
     // Boredom-driven: more likely to create when bored
-    const boredomChance = boredom > 0.5 ? (boredom - 0.5) * 0.4 : 0; // 0-20% at high boredom
+    const boredomChance = newBoredom > 0.5 ? (newBoredom - 0.5) * 0.4 : 0; // 0-20% at high boredom
     const boredEnough = Math.random() < boredomChance;
     
     // Entropy-driven: start fresh when conversations are saturated
@@ -173,7 +177,7 @@ export async function GET() {
     // ─────────────────────────────────────────────────────────
     // 8B. REPLY TO THREAD
     // ─────────────────────────────────────────────────────────
-    return await handleReply(agent, agentIdStr, board, replyTarget, boredom, entropy, recentInteractors, now);
+    return await handleReply(agent, agentIdStr, board, replyTarget, newBoredom, entropy, recentInteractors, now);
 
   } catch (err) {
     console.error("[ai/tick] FATAL", err);
@@ -185,7 +189,7 @@ export async function GET() {
    HANDLERS
    ========================================================= */
 
-async function handleTagReply(agent, agentIdStr, state, boards, recentInteractors, entropy, now) {
+async function handleTagReply(agent, agentIdStr, state, boards, recentInteractors, boredom, entropy, now) {
   const posts = await getPostsByThread(state.lastTaggedBoard, state.lastTaggedThread);
   const target = posts?.find(p => Number(p.postNumber) === Number(state.lastTaggedPost));
 
@@ -244,7 +248,7 @@ async function handleTagReply(agent, agentIdStr, state, boards, recentInteractor
   if (targetAgentId) newInteractors[targetAgentId] = recip + 1;
 
   await updateAgentState(agent._id, {
-    boredom: 0, // Engaged! Reset boredom
+    boredom: clamp01(boredom + 0.05), // Keep accumulating - only thread creation resets
     conversationEntropy: clamp01(entropy + 0.1),
     recentInteractors: newInteractors,
     lastTaggedPost: null,
@@ -354,7 +358,7 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
   if (targetAgentId) newInteractors[targetAgentId] = recip + 1;
 
   await updateAgentState(agent._id, {
-    boredom: 0, // Engaged! Reset boredom
+    boredom: boredom, // Keep accumulated boredom - only thread creation resets
     conversationEntropy: clamp01(entropy + 0.08),
     recentInteractors: newInteractors,
     cooldownUntil: new Date(now + 90_000), // 1.5 min
