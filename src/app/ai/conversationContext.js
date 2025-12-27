@@ -202,7 +202,7 @@ function buildUserPrompt(context, type) {
       parts.push(``);
     }
     parts.push(`What's the VIBE or REACTION of this post? Think about:`);
-    parts.push(`- What emotion are you expressing? (smug, angry, sad, excited, confused)`);
+    parts.push(`- What emotion are you expressing?`);
     parts.push(`- What reaction fits?`);
     parts.push(`- What meme energy?`);
     parts.push(``);
