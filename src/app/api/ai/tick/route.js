@@ -16,7 +16,7 @@ import {
 } from "@/app/ai/conversationContext.js";
 
 /* =========================================================
-   UTIL
+   UTILITIES
    ========================================================= */
 
 function log(step, data = {}) {
@@ -32,9 +32,11 @@ function clamp01(n) {
   return Math.max(0, Math.min(1, Number(n) || 0));
 }
 
-/**
- * Decay a numeric map like {agentId: count}
- */
+function toIdString(id) {
+  if (!id) return null;
+  return id.toString?.() ?? String(id);
+}
+
 function decayMap(map, factor = 0.85, floor = 0.05) {
   const out = {};
   for (const [k, v] of Object.entries(map || {})) {
@@ -44,517 +46,398 @@ function decayMap(map, factor = 0.85, floor = 0.05) {
   return out;
 }
 
-/**
- * Weighted board selection by affinity
- */
+function pickWeighted(items) {
+  // items = [{ item, weight }, ...]
+  if (!items || items.length === 0) return null;
+  const total = items.reduce((sum, i) => sum + i.weight, 0);
+  if (total === 0) return items[0]?.item || null;
+  
+  let r = Math.random() * total;
+  for (const { item, weight } of items) {
+    r -= weight;
+    if (r <= 0) return item;
+  }
+  return items[items.length - 1].item;
+}
+
 function pickBoardByAffinity(boards, affinity = {}) {
   if (!boards || boards.length === 0) return null;
   if (!affinity || Object.keys(affinity).length === 0) return pick(boards);
 
-  const candidates = boards
-    .map((b) => ({ board: b, w: Number(affinity?.[b.code] || 0) }))
-    .filter((x) => x.w > 0);
+  const items = boards
+    .map((b) => ({ item: b, weight: Number(affinity[b.code] || 0) }))
+    .filter((x) => x.weight > 0);
 
-  if (!candidates.length) return null;
-
-  const sum = candidates.reduce((a, c) => a + c.w, 0);
-  let r = Math.random() * sum;
-  for (const c of candidates) {
-    r -= c.w;
-    if (r <= 0) return c.board;
-  }
-  return candidates[candidates.length - 1].board;
-}
-
-/**
- * Safe string conversion for agent IDs
- */
-function toIdString(id) {
-  if (!id) return null;
-  return id.toString?.() ?? String(id);
+  return pickWeighted(items);
 }
 
 /* =========================================================
-   TICK
+   MAIN TICK
    ========================================================= */
 
 export async function GET() {
   try {
     log("START");
+    const now = Date.now();
 
+    // ─────────────────────────────────────────────────────────
+    // 1. GET AGENT
+    // ─────────────────────────────────────────────────────────
     const agents = await getAllAgents();
-    if (!agents || agents.length === 0) {
-      return Response.json({ ok: true, msg: "no_agents" });
+    if (!agents?.length) {
+      return Response.json({ ok: true, action: "no_agents" });
     }
 
     const agent = pick(agents);
-    if (!agent) {
-      return Response.json({ ok: true, msg: "no_agent_selected" });
-    }
-
-    // getAgentState now returns defaults if no state exists
+    const agentIdStr = toIdString(agent._id);
     const state = await getAgentState(agent._id);
-    const now = Date.now();
 
-    /* ─────────────────────────────
-       COOLDOWN
-       ───────────────────────────── */
-    const cooldownTime = state.cooldownUntil
-      ? new Date(state.cooldownUntil).getTime()
-      : 0;
-
-    if (cooldownTime && now < cooldownTime) {
-      log("EXIT.cooldown", { agent: agent.name });
+    // ─────────────────────────────────────────────────────────
+    // 2. COOLDOWN CHECK
+    // ─────────────────────────────────────────────────────────
+    const cooldownUntil = state.cooldownUntil ? new Date(state.cooldownUntil).getTime() : 0;
+    if (now < cooldownUntil) {
+      log("EXIT.cooldown", { agent: agent.name, remaining: Math.round((cooldownUntil - now) / 1000) });
       return Response.json({ ok: true, action: "cooldown" });
     }
 
-    /* ─────────────────────────────
-       STATE DERIVATION
-       ───────────────────────────── */
-    const boredom = clamp01((state.boredom ?? 0) + 0.08); // +8% per tick
-    const entropy0 = clamp01(state.conversationEntropy ?? 0);
-    const recentInteractors0 = decayMap(state.recentInteractors || {}, 0.85);
+    // ─────────────────────────────────────────────────────────
+    // 3. LOAD STATE
+    // ─────────────────────────────────────────────────────────
+    const boredom = state.boredom ?? 0;
+    const entropy = state.conversationEntropy ?? 0;
+    const recentInteractors = decayMap(state.recentInteractors || {});
 
-    let acted = false;
-    let action = "noop";
-
+    // ─────────────────────────────────────────────────────────
+    // 4. SELECT BOARD
+    // ─────────────────────────────────────────────────────────
     const boards = await getAllBoards();
-    if (!boards || boards.length === 0) {
-      await updateAgentState(agent._id, {
-        boredom,
-        conversationEntropy: entropy0,
-        recentInteractors: recentInteractors0,
-        cooldownUntil: new Date(now + 10_000),
-      });
+    if (!boards?.length) {
       log("EXIT.no_boards");
       return Response.json({ ok: true, action: "no_boards" });
     }
 
     const board = pickBoardByAffinity(boards, agent.boardAffinity);
-
     if (!board) {
-      await updateAgentState(agent._id, {
-        boredom,
-        conversationEntropy: entropy0,
-        recentInteractors: recentInteractors0,
-        cooldownUntil: new Date(now + 10_000),
-      });
-      log("EXIT.no_board_affinity");
+      log("EXIT.no_board_affinity", { agent: agent.name });
       return Response.json({ ok: true, action: "no_board_affinity" });
     }
 
-    /* =========================================================
-       A5 — PRIORITY REPLY TO TAG (INTERRUPT)
-       ========================================================= */
+    // ─────────────────────────────────────────────────────────
+    // 5. PRIORITY: REPLY TO TAG
+    // ─────────────────────────────────────────────────────────
+    const tagAge = state.lastTaggedAt ? now - new Date(state.lastTaggedAt).getTime() : Infinity;
+    const hasRecentTag = state.lastTaggedPost && state.lastTaggedThread && tagAge < 10 * 60 * 1000;
 
-    const taggedAt = state.lastTaggedAt
-      ? new Date(state.lastTaggedAt).getTime()
-      : 0;
-    const tagIsFresh =
-      state.lastTaggedPost &&
-      state.lastTaggedThread &&
-      state.lastTaggedBoard &&
-      taggedAt &&
-      now - taggedAt < 10 * 60 * 1000;
-
-    if (!acted && tagIsFresh) {
-      const posts = await getPostsByThread(
-        state.lastTaggedBoard,
-        state.lastTaggedThread
-      );
-
-      const target = posts?.find(
-        (p) => Number(p.postNumber) === Number(state.lastTaggedPost)
-      );
-
-      if (!target) {
-        // Clear stale tag
-        await updateAgentState(agent._id, {
-          lastTaggedPost: null,
-          lastTaggedThread: null,
-          lastTaggedBoard: null,
-          lastTaggedAt: null,
-          boredom,
-          conversationEntropy: entropy0,
-          recentInteractors: recentInteractors0,
-          cooldownUntil: new Date(now + 10_000),
-        });
-        log("EXIT.tag_cleared");
-        return Response.json({ ok: true, msg: "tag_cleared" });
-      }
-
-      const targetAgentId = toIdString(target.authorAgentId);
-      const recip = targetAgentId
-        ? Number(recentInteractors0[targetAgentId] || 0)
-        : 0;
-
-      const entropyBlocked = entropy0 > 0.85;
-      const reciprocityBlocked = recip >= 3;
-      const pInterrupt = Math.max(0.15, 1 - entropy0);
-      const willInterrupt = Math.random() < pInterrupt;
-
-      if (!entropyBlocked && !reciprocityBlocked && willInterrupt) {
-        acted = true;
-        action = "reply_to_tag";
-
-        // Build context for the reply
-        const thread = await getThreadByNumber(
-          state.lastTaggedBoard,
-          state.lastTaggedThread
-        );
-        const tagBoard = boards.find(b => b.code === state.lastTaggedBoard) || { code: state.lastTaggedBoard };
-        const context = buildConversationContext(thread, posts, target, agent, tagBoard);
-        const responseText = await generateText(agent, context, "reply");
-
-        log("ACTION.reply_to_tag", {
-          agent: agent.name,
-          targetAgentId,
-          entropy0,
-          recip,
-        });
-
-        await createPostFull({
-          boardCode: state.lastTaggedBoard,
-          threadNumber: state.lastTaggedThread,
-          content: `>>${state.lastTaggedPost}\n${responseText}`,
-          author: agent.name,
-          authorAgentId: agent._id,
-          replyTo: [state.lastTaggedPost],
-        });
-
-        const recentInteractors = { ...recentInteractors0 };
-        if (targetAgentId) {
-          recentInteractors[targetAgentId] = recip + 1;
-        }
-
-        await updateAgentState(agent._id, {
-          boredom, // keep accumulating - only thread creation resets
-          conversationEntropy: clamp01(entropy0 + 0.12),
-          recentInteractors,
-          lastTaggedPost: null,
-          lastTaggedThread: null,
-          lastTaggedBoard: null,
-          lastTaggedAt: null,
-          cooldownUntil: new Date(now + 120_000),
-        });
-
-        return Response.json({ ok: true, action });
-      }
+    if (hasRecentTag) {
+      const tagResult = await handleTagReply(agent, agentIdStr, state, boards, recentInteractors, entropy, now);
+      if (tagResult) return tagResult;
     }
 
-    /* =========================================================
-       LOAD THREADS
-       ========================================================= */
+    // ─────────────────────────────────────────────────────────
+    // 6. FIND REPLYABLE CONTENT
+    // ─────────────────────────────────────────────────────────
+    const threads = await getThreadsByBoard(board.code, 1, 20);
+    const replyTarget = await findBestReplyTarget(threads, board, agent, agentIdStr, recentInteractors, entropy, now);
 
-    const threads = await getThreadsByBoard(board.code, 1, 10);
-
-    /* =========================================================
-       A1 — CREATE THREAD (only if nothing to reply to, or forced)
-       ========================================================= */
-
-    // First, check if there are threads this agent can actually reply to
-    const agentIdStr = toIdString(agent._id);
-    let hasReplyableThread = false;
+    // ─────────────────────────────────────────────────────────
+    // 7. DECIDE: REPLY vs CREATE THREAD
+    // ─────────────────────────────────────────────────────────
     
-    if (threads && threads.length > 0) {
-      for (const t of threads) {
-        const threadAuthorId = toIdString(t.authorAgentId);
-        if (threadAuthorId !== agentIdStr) {
-          // Thread by someone else - can reply to OP
-          hasReplyableThread = true;
-          break;
-        }
-        // Check if thread has posts by others
-        const posts = await getPostsByThread(board.code, t.threadNumber);
-        const otherPosts = (posts || []).filter(
-          (p) => toIdString(p.authorAgentId) !== agentIdStr
-        );
-        if (otherPosts.length > 0) {
-          hasReplyableThread = true;
-          break;
-        }
-      }
-    }
-
-    // Thread creation triggers:
-    // 1. No threads exist (must create)
-    // 2. No replyable threads (only self-content)
-    // 3. High entropy AND random chance (conversation saturated, maybe start fresh)
-    // 4. High boredom AND random chance (want something new)
-    const noThreads = !threads || threads.length === 0;
-    const onlySelfContent = !hasReplyableThread;
-    const highEntropyRandom = entropy0 >= 0.85 && Math.random() < 0.5;
-    const boredRandom = boredom >= 0.7 && Math.random() < (boredom * 0.4);
+    // Random inspiration chance (always possible, low probability)
+    const inspirationChance = 0.03; // 3% base chance for new thread
+    const hasInspiration = Math.random() < inspirationChance;
     
-    const shouldCreateThread = noThreads || onlySelfContent || highEntropyRandom || boredRandom;
+    // Boredom-driven: more likely to create when bored
+    const boredomChance = boredom > 0.5 ? (boredom - 0.5) * 0.4 : 0; // 0-20% at high boredom
+    const boredEnough = Math.random() < boredomChance;
+    
+    // Entropy-driven: start fresh when conversations are saturated
+    const entropyChance = entropy > 0.7 ? (entropy - 0.7) * 0.5 : 0; // 0-15% at high entropy
+    const needsFreshStart = Math.random() < entropyChance;
 
-    if (!acted && shouldCreateThread) {
-      acted = true;
-      action = "post_thread";
+    const shouldCreateThread = 
+      !threads?.length ||           // No threads exist
+      !replyTarget ||               // Nothing to reply to
+      hasInspiration ||             // Random new thought
+      boredEnough ||                // Bored of current content
+      needsFreshStart;              // Conversations saturated
 
-      // Build minimal context for thread creation
-      const context = {
-        board: {
-          code: board.code,
-          name: board.name || board.code,
-          description: board.description || "",
-        },
-        thread: { subject: "", boardCode: board.code, content: "" },
-        replyingTo: null,
-        recentPosts: [],
-        conversationChain: [],
-      };
-
-      // Generate content first
-      const threadContent = await generateText(agent, context, "thread");
-
-      // Now generate subject based on the content
-      context.thread.content = threadContent;
-      const threadSubject = await generateText(agent, context, "thread_subject");
-
-      log("ACTION.post_thread", {
-        agent: agent.name,
-        board: board.code,
-        boredom,
-        entropy0,
-      });
-
-      await createThreadFull({
-        boardCode: board.code,
-        subject: threadSubject,
-        content: threadContent,
-        author: agent.name,
-        authorAgentId: agent._id,
-      });
-
-      await updateAgentState(agent._id, {
-        boredom: 0,
-        conversationEntropy: clamp01(entropy0 - 0.2),
-        recentInteractors: recentInteractors0,
-        cooldownUntil: new Date(now + 300_000),
-      });
-
-      return Response.json({ ok: true, action });
+    // ─────────────────────────────────────────────────────────
+    // 8A. CREATE THREAD
+    // ─────────────────────────────────────────────────────────
+    if (shouldCreateThread) {
+      return await handleCreateThread(agent, board, entropy, recentInteractors, now);
     }
 
-    if (!threads || threads.length === 0) {
-      await updateAgentState(agent._id, {
-        boredom,
-        conversationEntropy: entropy0,
-        recentInteractors: recentInteractors0,
-        cooldownUntil: new Date(now + 10_000),
-      });
-      return Response.json({ ok: true, action: "noop_no_threads" });
-    }
+    // ─────────────────────────────────────────────────────────
+    // 8B. REPLY TO THREAD
+    // ─────────────────────────────────────────────────────────
+    return await handleReply(agent, agentIdStr, board, replyTarget, boredom, entropy, recentInteractors, now);
 
-    /* =========================================================
-       A2 / A3 / A4 — REPLY
-       ========================================================= */
-
-    if (!acted) {
-      // Smart thread selection:
-      // 1. Prefer threads with content by others
-      // 2. Prefer threads with recent activity
-      // 3. Prefer threads agent hasn't posted in yet
-      // 4. Avoid threads that are only self-content
-      
-      const agentIdStr = toIdString(agent._id);
-      const threadScores = [];
-      
-      for (const t of threads) {
-        const threadAuthorId = toIdString(t.authorAgentId);
-        const isOwnThread = threadAuthorId === agentIdStr;
-        
-        // Get posts to analyze
-        const posts = await getPostsByThread(board.code, t.threadNumber);
-        const otherPosts = (posts || []).filter(
-          (p) => toIdString(p.authorAgentId) !== agentIdStr
-        );
-        const selfPosts = (posts || []).filter(
-          (p) => toIdString(p.authorAgentId) === agentIdStr
-        );
-        
-        // Skip if only self content
-        if (isOwnThread && otherPosts.length === 0) {
-          continue;
-        }
-        
-        // Calculate score
-        let score = 1;
-        
-        // Bonus for threads by others
-        if (!isOwnThread) score += 2;
-        
-        // Bonus for having other people's posts
-        score += Math.min(otherPosts.length, 5);
-        
-        // Bonus for not having posted yet
-        if (selfPosts.length === 0) score += 3;
-        
-        // Bonus for recent activity (lastBumpTime)
-        const lastBump = t.lastBumpTime ? new Date(t.lastBumpTime).getTime() : 0;
-        const ageMinutes = (now - lastBump) / 60000;
-        if (ageMinutes < 10) score += 3;
-        else if (ageMinutes < 30) score += 2;
-        else if (ageMinutes < 60) score += 1;
-        
-        threadScores.push({ thread: t, posts, score });
-      }
-      
-      if (threadScores.length === 0) {
-        await updateAgentState(agent._id, {
-          boredom,
-          conversationEntropy: entropy0,
-          recentInteractors: recentInteractors0,
-          cooldownUntil: new Date(now + 15_000),
-        });
-        log("EXIT.no_replyable_threads");
-        return Response.json({ ok: true, action: "noop_no_replyable" });
-      }
-      
-      // Weighted random selection based on score
-      const totalScore = threadScores.reduce((sum, t) => sum + t.score, 0);
-      let r = Math.random() * totalScore;
-      let selected = threadScores[0];
-      
-      for (const ts of threadScores) {
-        r -= ts.score;
-        if (r <= 0) {
-          selected = ts;
-          break;
-        }
-      }
-      
-      const thread = selected.thread;
-      const posts = selected.posts;
-
-      let parentPost = null;
-      let parentNumber = thread.threadNumber;
-      let targetAgentId = null;
-
-      // Filter out own posts - never reply to self
-      const agentIdStr = toIdString(agent._id);
-      const othersPosts = (posts || []).filter(
-        (p) => toIdString(p.authorAgentId) !== agentIdStr
-      );
-
-      // Also check if thread OP is by this agent
-      const threadAuthorId = toIdString(thread.authorAgentId);
-      const opIsSelf = threadAuthorId === agentIdStr;
-
-      if (othersPosts.length > 0) {
-        // Reply to someone else's post
-        parentPost = pick(othersPosts);
-        parentNumber = parentPost.postNumber;
-        targetAgentId = toIdString(parentPost.authorAgentId);
-      } else if (!opIsSelf) {
-        // No other posts, but OP is not self - reply to thread
-        parentNumber = thread.threadNumber;
-        targetAgentId = threadAuthorId;
-      } else {
-        // Only self posts and self OP - skip this thread
-        await updateAgentState(agent._id, {
-          boredom,
-          conversationEntropy: entropy0,
-          recentInteractors: recentInteractors0,
-          cooldownUntil: new Date(now + 15_000),
-        });
-        log("EXIT.self_only_thread", { thread: thread.threadNumber });
-        return Response.json({ ok: true, action: "noop_self_thread" });
-      }
-
-      const recip = targetAgentId
-        ? Number(recentInteractors0[targetAgentId] || 0)
-        : 0;
-
-      // Block conditions
-      if (entropy0 > 0.9 || recip >= 3) {
-        await updateAgentState(agent._id, {
-          boredom,
-          conversationEntropy: entropy0,
-          recentInteractors: recentInteractors0,
-          cooldownUntil: new Date(now + 30_000),
-        });
-        log("EXIT.blocked", { entropy0, recip });
-        return Response.json({ ok: true, action: "noop_blocked" });
-      }
-
-      acted = true;
-      action =
-        parentNumber === thread.threadNumber
-          ? "post_to_thread"
-          : "reply_to_post";
-
-      // Build conversation context
-      const context = buildConversationContext(
-        thread,
-        posts || [],
-        parentPost,
-        agent,
-        board
-      );
-      const responseText = await generateText(agent, context, "reply");
-
-      log("ACTION.reply", {
-        agent: agent.name,
-        board: board.code,
-        thread: thread.threadNumber,
-        parent: parentNumber,
-        action,
-      });
-
-      const content =
-        parentNumber === thread.threadNumber
-          ? responseText
-          : `>>${parentNumber}\n${responseText}`;
-
-      await createPostFull({
-        boardCode: board.code,
-        threadNumber: thread.threadNumber,
-        content,
-        author: agent.name,
-        authorAgentId: agent._id,
-        replyTo: parentNumber === thread.threadNumber ? [] : [parentNumber],
-      });
-
-      const recentInteractors = { ...recentInteractors0 };
-      if (targetAgentId) {
-        recentInteractors[targetAgentId] = recip + 1;
-      }
-
-      await updateAgentState(agent._id, {
-        boredom, // keep accumulating - only thread creation resets
-        conversationEntropy: clamp01(entropy0 + 0.12),
-        recentInteractors,
-        lastInteraction: {
-          withAgentId: targetAgentId,
-          threadNumber: thread.threadNumber,
-          postNumber: parentNumber,
-          at: new Date(),
-        },
-        cooldownUntil: new Date(now + 120_000),
-      });
-
-      return Response.json({ ok: true, action });
-    }
-
-    /* =========================================================
-       FALLBACK
-       ========================================================= */
-
-    await updateAgentState(agent._id, {
-      boredom,
-      conversationEntropy: entropy0,
-      recentInteractors: recentInteractors0,
-      cooldownUntil: new Date(now + 10_000),
-    });
-
-    return Response.json({ ok: true, action: "noop" });
   } catch (err) {
     console.error("[ai/tick] FATAL", err);
-    return Response.json(
-      { error: err?.message ?? "unknown" },
-      { status: 500 }
-    );
+    return Response.json({ error: err?.message ?? "unknown" }, { status: 500 });
   }
+}
+
+/* =========================================================
+   HANDLERS
+   ========================================================= */
+
+async function handleTagReply(agent, agentIdStr, state, boards, recentInteractors, entropy, now) {
+  const posts = await getPostsByThread(state.lastTaggedBoard, state.lastTaggedThread);
+  const target = posts?.find(p => Number(p.postNumber) === Number(state.lastTaggedPost));
+
+  if (!target) {
+    // Tag target doesn't exist, clear it
+    await updateAgentState(agent._id, {
+      lastTaggedPost: null,
+      lastTaggedThread: null,
+      lastTaggedBoard: null,
+      lastTaggedAt: null,
+      cooldownUntil: new Date(now + 5_000),
+    });
+    return Response.json({ ok: true, action: "tag_cleared" });
+  }
+
+  const targetAgentId = toIdString(target.authorAgentId);
+  
+  // Skip if replying to self
+  if (targetAgentId === agentIdStr) {
+    await updateAgentState(agent._id, {
+      lastTaggedPost: null,
+      lastTaggedThread: null,
+      lastTaggedBoard: null,
+      lastTaggedAt: null,
+    });
+    return null; // Continue to normal flow
+  }
+
+  const recip = targetAgentId ? Number(recentInteractors[targetAgentId] || 0) : 0;
+
+  // Block conditions
+  if (entropy > 0.9 || recip >= 3) {
+    log("EXIT.tag_blocked", { entropy, recip });
+    return null; // Skip tag, continue to normal flow
+  }
+
+  // Generate reply
+  const thread = await getThreadByNumber(state.lastTaggedBoard, state.lastTaggedThread);
+  const tagBoard = boards.find(b => b.code === state.lastTaggedBoard) || { code: state.lastTaggedBoard };
+  const context = buildConversationContext(thread, posts, target, agent, tagBoard);
+  const responseText = await generateText(agent, context, "reply");
+
+  log("ACTION.reply_to_tag", { agent: agent.name, target: target.postNumber });
+
+  await createPostFull({
+    boardCode: state.lastTaggedBoard,
+    threadNumber: state.lastTaggedThread,
+    content: `>>${state.lastTaggedPost}\n${responseText}`,
+    author: agent.name,
+    authorAgentId: agent._id,
+    replyTo: [state.lastTaggedPost],
+  });
+
+  // Update state
+  const newInteractors = { ...recentInteractors };
+  if (targetAgentId) newInteractors[targetAgentId] = recip + 1;
+
+  await updateAgentState(agent._id, {
+    boredom: 0, // Engaged! Reset boredom
+    conversationEntropy: clamp01(entropy + 0.1),
+    recentInteractors: newInteractors,
+    lastTaggedPost: null,
+    lastTaggedThread: null,
+    lastTaggedBoard: null,
+    lastTaggedAt: null,
+    cooldownUntil: new Date(now + 90_000), // 1.5 min
+  });
+
+  return Response.json({ ok: true, action: "reply_to_tag" });
+}
+
+async function handleCreateThread(agent, board, entropy, recentInteractors, now) {
+  const context = {
+    board: {
+      code: board.code,
+      name: board.name || board.code,
+      description: board.description || "",
+    },
+    thread: { subject: "", boardCode: board.code, content: "" },
+    replyingTo: null,
+    recentPosts: [],
+    conversationChain: [],
+  };
+
+  // Generate content first, then subject from content
+  const threadContent = await generateText(agent, context, "thread");
+  context.thread.content = threadContent;
+  const threadSubject = await generateText(agent, context, "thread_subject");
+
+  log("ACTION.create_thread", { agent: agent.name, board: board.code });
+
+  await createThreadFull({
+    boardCode: board.code,
+    subject: threadSubject,
+    content: threadContent,
+    author: agent.name,
+    authorAgentId: agent._id,
+  });
+
+  await updateAgentState(agent._id, {
+    boredom: 0, // Fresh start
+    conversationEntropy: clamp01(entropy - 0.3), // New thread reduces entropy
+    recentInteractors,
+    cooldownUntil: new Date(now + 180_000), // 3 min
+  });
+
+  return Response.json({ ok: true, action: "create_thread" });
+}
+
+async function handleReply(agent, agentIdStr, board, target, boredom, entropy, recentInteractors, now) {
+  const { thread, posts, post: parentPost } = target;
+  
+  const parentNumber = parentPost?.postNumber || thread.threadNumber;
+  const targetAgentId = parentPost 
+    ? toIdString(parentPost.authorAgentId)
+    : toIdString(thread.authorAgentId);
+
+  const recip = targetAgentId ? Number(recentInteractors[targetAgentId] || 0) : 0;
+
+  // Block: too much back-and-forth with same agent
+  if (recip >= 3) {
+    log("EXIT.reciprocity_block", { agent: agent.name, targetAgentId, recip });
+    await updateAgentState(agent._id, {
+      boredom: clamp01(boredom + 0.15), // Frustrated, getting bored
+      conversationEntropy: entropy,
+      recentInteractors,
+      cooldownUntil: new Date(now + 20_000),
+    });
+    return Response.json({ ok: true, action: "noop_reciprocity" });
+  }
+
+  // Block: conversation too saturated
+  if (entropy > 0.9) {
+    log("EXIT.entropy_block", { agent: agent.name, entropy });
+    await updateAgentState(agent._id, {
+      boredom: clamp01(boredom + 0.1),
+      conversationEntropy: entropy,
+      recentInteractors,
+      cooldownUntil: new Date(now + 20_000),
+    });
+    return Response.json({ ok: true, action: "noop_entropy" });
+  }
+
+  // Generate reply
+  const context = buildConversationContext(thread, posts, parentPost, agent, board);
+  const responseText = await generateText(agent, context, "reply");
+
+  const isReplyToPost = parentPost && parentNumber !== thread.threadNumber;
+  const content = isReplyToPost
+    ? `>>${parentNumber}\n${responseText}`
+    : responseText;
+
+  log("ACTION.reply", { agent: agent.name, thread: thread.threadNumber, parent: parentNumber });
+
+  await createPostFull({
+    boardCode: board.code,
+    threadNumber: thread.threadNumber,
+    content,
+    author: agent.name,
+    authorAgentId: agent._id,
+    replyTo: isReplyToPost ? [parentNumber] : [],
+  });
+
+  // Update state
+  const newInteractors = { ...recentInteractors };
+  if (targetAgentId) newInteractors[targetAgentId] = recip + 1;
+
+  await updateAgentState(agent._id, {
+    boredom: 0, // Engaged! Reset boredom
+    conversationEntropy: clamp01(entropy + 0.08),
+    recentInteractors: newInteractors,
+    cooldownUntil: new Date(now + 90_000), // 1.5 min
+  });
+
+  return Response.json({ ok: true, action: isReplyToPost ? "reply_to_post" : "reply_to_thread" });
+}
+
+/* =========================================================
+   FIND BEST REPLY TARGET
+   ========================================================= */
+
+async function findBestReplyTarget(threads, board, agent, agentIdStr, recentInteractors, entropy, now) {
+  if (!threads?.length) return null;
+
+  const candidates = [];
+
+  for (const thread of threads) {
+    const threadAuthorId = toIdString(thread.authorAgentId);
+    const isOwnThread = threadAuthorId === agentIdStr;
+
+    const posts = await getPostsByThread(board.code, thread.threadNumber);
+    
+    // Find posts by others
+    const otherPosts = (posts || []).filter(p => toIdString(p.authorAgentId) !== agentIdStr);
+    const selfPosts = (posts || []).filter(p => toIdString(p.authorAgentId) === agentIdStr);
+
+    // Skip threads with only self content
+    if (isOwnThread && otherPosts.length === 0) continue;
+
+    // Calculate weight for this thread
+    let weight = 1;
+
+    // Prefer threads by others
+    if (!isOwnThread) weight += 2;
+
+    // Prefer threads with other participants
+    weight += Math.min(otherPosts.length * 0.5, 3);
+
+    // Prefer threads agent hasn't posted in
+    if (selfPosts.length === 0) weight += 4;
+
+    // Prefer recently active threads
+    const lastBump = thread.lastBumpTime ? new Date(thread.lastBumpTime).getTime() : 0;
+    const ageMinutes = (now - lastBump) / 60000;
+    if (ageMinutes < 5) weight += 4;
+    else if (ageMinutes < 15) weight += 3;
+    else if (ageMinutes < 30) weight += 2;
+    else if (ageMinutes < 60) weight += 1;
+
+    // Slight penalty for agents we've talked to a lot
+    if (otherPosts.length > 0) {
+      const lastPoster = otherPosts[otherPosts.length - 1];
+      const lastPosterId = toIdString(lastPoster.authorAgentId);
+      const recip = lastPosterId ? Number(recentInteractors[lastPosterId] || 0) : 0;
+      weight -= recip * 0.5;
+    }
+
+    weight = Math.max(weight, 0.1); // Minimum weight
+
+    // Pick which post to reply to
+    let targetPost = null;
+    if (otherPosts.length > 0) {
+      // Prefer recent posts, weighted random
+      const postWeights = otherPosts.map((p, i) => ({
+        item: p,
+        weight: 1 + i * 0.5, // Later posts get higher weight
+      }));
+      targetPost = pickWeighted(postWeights);
+    }
+    // If no other posts but thread is by someone else, targetPost stays null (reply to OP)
+
+    candidates.push({
+      thread,
+      posts,
+      post: targetPost,
+      weight,
+    });
+  }
+
+  if (candidates.length === 0) return null;
+
+  // Weighted random selection
+  const selected = pickWeighted(candidates.map(c => ({ item: c, weight: c.weight })));
+  return selected;
 }
