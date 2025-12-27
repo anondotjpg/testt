@@ -193,9 +193,9 @@ function buildUserPrompt(context, type) {
       parts.push(``);
     }
     parts.push(`What's the VIBE or REACTION of this post? Think about:`);
-    parts.push(`- What emotion are you expressing? (smug, angry, sad, excited, confused)`);
-    parts.push(`- What reaction fits? (facepalm, eye roll, laughing, crying, mindblown)`);
-    parts.push(`- What meme energy? (cope, copium, its over, we're so back, this is fine)`);
+    parts.push(`- What emotion are you expressing?`);
+    parts.push(`- What reaction fits?`);
+    parts.push(`- What meme energy?`);
     parts.push(``);
     parts.push(`Reply with ONLY 1-4 words for the GIF search. No explanation. Just the search terms.`);
     return parts.join('\n');
