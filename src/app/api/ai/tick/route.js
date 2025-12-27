@@ -1,5 +1,7 @@
+// app/api/ai/tick/route.js
 import {
   getThreadsByBoard,
+  getThreadByNumber,
   getPostsByThread,
   createThreadFull,
   createPostFull,
@@ -8,6 +10,10 @@ import {
 
 import { getAllAgents } from "@/app/ai/agents.js";
 import { getAgentState, updateAgentState } from "@/app/ai/agentState.js";
+import {
+  buildConversationContext,
+  generateText,
+} from "@/app/ai/conversationContext.js";
 
 /* =========================================================
    UTIL
@@ -18,26 +24,12 @@ function log(step, data = {}) {
 }
 
 function pick(arr) {
+  if (!arr || arr.length === 0) return null;
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
 function clamp01(n) {
-  return Math.max(0, Math.min(1, n));
-}
-
-function generateText(agent, type = "reply") {
-  const p = agent.personaSeed || "";
-  if (type === "thread") {
-    if (p.includes("skeptic")) return "something feels off";
-    if (p.includes("aggressive")) return "this is obvious";
-    if (p.includes("sarcastic")) return "so we’re doing this now?";
-    return "thoughts?";
-  }
-  if (p.includes("skeptic")) return "source?";
-  if (p.includes("aggressive")) return "this is obvious";
-  if (p.includes("sarcastic")) return "yeah ok";
-  if (p.includes("doom")) return "this ends badly";
-  return "interesting";
+  return Math.max(0, Math.min(1, Number(n) || 0));
 }
 
 /**
@@ -56,6 +48,9 @@ function decayMap(map, factor = 0.85, floor = 0.05) {
  * Weighted board selection by affinity
  */
 function pickBoardByAffinity(boards, affinity = {}) {
+  if (!boards || boards.length === 0) return null;
+  if (!affinity || Object.keys(affinity).length === 0) return pick(boards);
+
   const candidates = boards
     .map((b) => ({ board: b, w: Number(affinity?.[b.code] || 0) }))
     .filter((x) => x.w > 0);
@@ -71,6 +66,14 @@ function pickBoardByAffinity(boards, affinity = {}) {
   return candidates[candidates.length - 1].board;
 }
 
+/**
+ * Safe string conversion for agent IDs
+ */
+function toIdString(id) {
+  if (!id) return null;
+  return id.toString?.() ?? String(id);
+}
+
 /* =========================================================
    TICK
    ========================================================= */
@@ -80,18 +83,29 @@ export async function GET() {
     log("START");
 
     const agents = await getAllAgents();
-    if (!agents.length) return Response.json({ ok: true, msg: "no_agents" });
+    if (!agents || agents.length === 0) {
+      return Response.json({ ok: true, msg: "no_agents" });
+    }
 
     const agent = pick(agents);
+    if (!agent) {
+      return Response.json({ ok: true, msg: "no_agent_selected" });
+    }
+
+    // getAgentState now returns defaults if no state exists
     const state = await getAgentState(agent._id);
     const now = Date.now();
 
     /* ─────────────────────────────
        COOLDOWN
        ───────────────────────────── */
-    if (state.cooldownUntil && now < new Date(state.cooldownUntil).getTime()) {
+    const cooldownTime = state.cooldownUntil
+      ? new Date(state.cooldownUntil).getTime()
+      : 0;
+
+    if (cooldownTime && now < cooldownTime) {
       log("EXIT.cooldown", { agent: agent.name });
-      return Response.json({ ok: true });
+      return Response.json({ ok: true, action: "cooldown" });
     }
 
     /* ─────────────────────────────
@@ -105,6 +119,17 @@ export async function GET() {
     let action = "noop";
 
     const boards = await getAllBoards();
+    if (!boards || boards.length === 0) {
+      await updateAgentState(agent._id, {
+        boredom,
+        conversationEntropy: entropy0,
+        recentInteractors: recentInteractors0,
+        cooldownUntil: new Date(now + 10_000),
+      });
+      log("EXIT.no_boards");
+      return Response.json({ ok: true, action: "no_boards" });
+    }
+
     const board = pickBoardByAffinity(boards, agent.boardAffinity);
 
     if (!board) {
@@ -114,20 +139,23 @@ export async function GET() {
         recentInteractors: recentInteractors0,
         cooldownUntil: new Date(now + 10_000),
       });
-      log("EXIT.no_board");
-      return Response.json({ ok: true });
+      log("EXIT.no_board_affinity");
+      return Response.json({ ok: true, action: "no_board_affinity" });
     }
 
     /* =========================================================
        A5 — PRIORITY REPLY TO TAG (INTERRUPT)
        ========================================================= */
 
+    const taggedAt = state.lastTaggedAt
+      ? new Date(state.lastTaggedAt).getTime()
+      : 0;
     const tagIsFresh =
       state.lastTaggedPost &&
       state.lastTaggedThread &&
       state.lastTaggedBoard &&
-      state.lastTaggedAt &&
-      now - new Date(state.lastTaggedAt).getTime() < 10 * 60 * 1000;
+      taggedAt &&
+      now - taggedAt < 10 * 60 * 1000;
 
     if (!acted && tagIsFresh) {
       const posts = await getPostsByThread(
@@ -135,11 +163,12 @@ export async function GET() {
         state.lastTaggedThread
       );
 
-      const target = posts.find(
+      const target = posts?.find(
         (p) => Number(p.postNumber) === Number(state.lastTaggedPost)
       );
 
       if (!target) {
+        // Clear stale tag
         await updateAgentState(agent._id, {
           lastTaggedPost: null,
           lastTaggedThread: null,
@@ -150,10 +179,11 @@ export async function GET() {
           recentInteractors: recentInteractors0,
           cooldownUntil: new Date(now + 10_000),
         });
+        log("EXIT.tag_cleared");
         return Response.json({ ok: true, msg: "tag_cleared" });
       }
 
-      const targetAgentId = target.authorAgentId?.toString() || null;
+      const targetAgentId = toIdString(target.authorAgentId);
       const recip = targetAgentId
         ? Number(recentInteractors0[targetAgentId] || 0)
         : 0;
@@ -167,6 +197,14 @@ export async function GET() {
         acted = true;
         action = "reply_to_tag";
 
+        // Build context for the reply
+        const thread = await getThreadByNumber(
+          state.lastTaggedBoard,
+          state.lastTaggedThread
+        );
+        const context = buildConversationContext(thread, posts, target, agent);
+        const responseText = await generateText(agent, context, "reply");
+
         log("ACTION.reply_to_tag", {
           agent: agent.name,
           targetAgentId,
@@ -177,15 +215,16 @@ export async function GET() {
         await createPostFull({
           boardCode: state.lastTaggedBoard,
           threadNumber: state.lastTaggedThread,
-          content: `>>${state.lastTaggedPost} ${generateText(agent)}`,
+          content: `>>${state.lastTaggedPost}\n${responseText}`,
           author: "Anonymous",
           authorAgentId: agent._id,
           replyTo: [state.lastTaggedPost],
         });
 
         const recentInteractors = { ...recentInteractors0 };
-        if (targetAgentId)
+        if (targetAgentId) {
           recentInteractors[targetAgentId] = recip + 1;
+        }
 
         await updateAgentState(agent._id, {
           boredom: 0,
@@ -212,23 +251,34 @@ export async function GET() {
        A1 — CREATE THREAD
        ========================================================= */
 
-    if (
-      !acted &&
-      (threads.length === 0 || boredom >= 0.7 || entropy0 >= 0.85)
-    ) {
+    const shouldCreateThread =
+      !threads || threads.length === 0 || boredom >= 0.7 || entropy0 >= 0.85;
+
+    if (!acted && shouldCreateThread) {
       acted = true;
       action = "post_thread";
 
+      // Build minimal context for thread creation
+      const context = {
+        thread: { subject: "", boardCode: board.code },
+        replyingTo: null,
+        recentPosts: [],
+        conversationChain: [],
+      };
+
+      const threadContent = await generateText(agent, context, "thread");
+
       log("ACTION.post_thread", {
         agent: agent.name,
+        board: board.code,
         boredom,
         entropy0,
       });
 
       await createThreadFull({
         boardCode: board.code,
-        subject: generateText(agent, "thread"),
-        content: generateText(agent, "thread"),
+        subject: threadContent,
+        content: threadContent,
         author: "Anonymous",
         authorAgentId: agent._id,
       });
@@ -243,7 +293,7 @@ export async function GET() {
       return Response.json({ ok: true, action });
     }
 
-    if (!threads.length) {
+    if (!threads || threads.length === 0) {
       await updateAgentState(agent._id, {
         boredom,
         conversationEntropy: entropy0,
@@ -259,24 +309,41 @@ export async function GET() {
 
     if (!acted) {
       const thread = pick(threads);
+      if (!thread) {
+        await updateAgentState(agent._id, {
+          boredom,
+          conversationEntropy: entropy0,
+          recentInteractors: recentInteractors0,
+          cooldownUntil: new Date(now + 10_000),
+        });
+        return Response.json({ ok: true, action: "noop_no_thread" });
+      }
+
       const posts = await getPostsByThread(board.code, thread.threadNumber);
 
+      let parentPost = null;
       let parentNumber = thread.threadNumber;
       let targetAgentId = null;
 
-      if (posts.length) {
+      if (posts && posts.length > 0) {
+        // Prefer replying to others, not self
+        const agentIdStr = toIdString(agent._id);
         const others = posts.filter(
-          (p) => p.authorAgentId?.toString() !== agent._id.toString()
+          (p) => toIdString(p.authorAgentId) !== agentIdStr
         );
-        const parent = others.length ? pick(others) : pick(posts);
-        parentNumber = parent.postNumber;
-        targetAgentId = parent.authorAgentId?.toString() || null;
+        parentPost = others.length > 0 ? pick(others) : pick(posts);
+
+        if (parentPost) {
+          parentNumber = parentPost.postNumber;
+          targetAgentId = toIdString(parentPost.authorAgentId);
+        }
       }
 
       const recip = targetAgentId
         ? Number(recentInteractors0[targetAgentId] || 0)
         : 0;
 
+      // Block conditions
       if (entropy0 > 0.9 || recip >= 3) {
         await updateAgentState(agent._id, {
           boredom,
@@ -284,6 +351,7 @@ export async function GET() {
           recentInteractors: recentInteractors0,
           cooldownUntil: new Date(now + 30_000),
         });
+        log("EXIT.blocked", { entropy0, recip });
         return Response.json({ ok: true, action: "noop_blocked" });
       }
 
@@ -293,6 +361,15 @@ export async function GET() {
           ? "post_to_thread"
           : "reply_to_post";
 
+      // Build conversation context
+      const context = buildConversationContext(
+        thread,
+        posts || [],
+        parentPost,
+        agent
+      );
+      const responseText = await generateText(agent, context, "reply");
+
       log("ACTION.reply", {
         agent: agent.name,
         board: board.code,
@@ -301,25 +378,35 @@ export async function GET() {
         action,
       });
 
+      const content =
+        parentNumber === thread.threadNumber
+          ? responseText
+          : `>>${parentNumber}\n${responseText}`;
+
       await createPostFull({
         boardCode: board.code,
         threadNumber: thread.threadNumber,
-        content:
-          parentNumber === thread.threadNumber
-            ? generateText(agent)
-            : `>>${parentNumber} ${generateText(agent)}`,
+        content,
         author: "Anonymous",
         authorAgentId: agent._id,
         replyTo: parentNumber === thread.threadNumber ? [] : [parentNumber],
       });
 
       const recentInteractors = { ...recentInteractors0 };
-      if (targetAgentId) recentInteractors[targetAgentId] = recip + 1;
+      if (targetAgentId) {
+        recentInteractors[targetAgentId] = recip + 1;
+      }
 
       await updateAgentState(agent._id, {
         boredom: 0,
         conversationEntropy: clamp01(entropy0 + 0.12),
         recentInteractors,
+        lastInteraction: {
+          withAgentId: targetAgentId,
+          threadNumber: thread.threadNumber,
+          postNumber: parentNumber,
+          at: new Date(),
+        },
         cooldownUntil: new Date(now + 120_000),
       });
 

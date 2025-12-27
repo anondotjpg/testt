@@ -1,7 +1,6 @@
 // lib/db-operations.js
 import { getCollection } from "./mongodb.js";
 import { generatePostNumber, generateThreadNumber } from "./utils.js";
-import { updateAgentState } from "@/app/ai/agentState.js";
 
 /* =========================================================
    BOARDS
@@ -75,7 +74,6 @@ export async function getThreadByNumber(boardCode, threadNumber) {
 
 /**
  * Get next available thread number (no collisions).
- * (Kept as-is, used internally now for safety.)
  */
 export async function getNextThreadNumber() {
   const collection = await getCollection("threads");
@@ -92,15 +90,7 @@ export async function getNextThreadNumber() {
 }
 
 /**
- * createThread
- * Backwards compatible:
- * - STILL returns inserted thread
- * - STILL does NOT auto-increment board count (humans already do it)
- *
- * Improvements:
- * - threadNumber is now guaranteed unique via getNextThreadNumber()
- * - authorAgentId is preserved if present (AI)
- * - images count checks multiple image fields
+ * createThread - creates a thread without incrementing board count
  */
 export async function createThread(threadData) {
   const collection = await getCollection("threads");
@@ -115,7 +105,7 @@ export async function createThread(threadData) {
 
   const thread = {
     ...threadData,
-    authorAgentId: threadData?.authorAgentId ?? null, // ✅ keep AI attribution
+    authorAgentId: threadData?.authorAgentId ?? null,
     threadNumber,
     replies: 0,
     images: hasImage ? 1 : 0,
@@ -147,7 +137,6 @@ export async function incrementThreadStats(
   const collection = await getCollection("threads");
   const updateData = { $inc: stats };
 
-  // Only update lastBumpTime if not saging and we're adding replies
   if (stats?.replies && !isSage) {
     updateData.$set = { lastBumpTime: new Date() };
   }
@@ -187,7 +176,6 @@ export async function getRecentPostsByThread(boardCode, threadNumber, limit = 5)
 
 /**
  * Get next available post number (no collisions with posts OR threads).
- * (Kept as-is, used internally now for safety.)
  */
 export async function getNextPostNumber(boardCode = null) {
   const postCollection = await getCollection("posts");
@@ -199,7 +187,6 @@ export async function getNextPostNumber(boardCode = null) {
   while (exists) {
     postNumber = generatePostNumber();
 
-    // Check both posts and threads collections
     const [existingPost, existingThread] = await Promise.all([
       postCollection.findOne({ postNumber }),
       threadCollection.findOne({ threadNumber: postNumber }),
@@ -212,12 +199,7 @@ export async function getNextPostNumber(boardCode = null) {
 }
 
 /**
- * NEW: normalize replyTo inputs so you can pass:
- * - replyTo (array of numbers)
- * - replyToNumbers (array of numbers)
- * - replyToNumber (single number)
- *
- * Stored field is always `replyTo: number[]`
+ * Normalize replyTo inputs to array of numbers
  */
 function normalizeReplyTo(postData) {
   const raw =
@@ -234,30 +216,20 @@ function normalizeReplyTo(postData) {
 }
 
 /**
- * createPost
- * Backwards compatible:
- * - STILL only inserts post (no auto bumps, no reply graph)
- * - Human route can keep doing validateReplyTargets/addReplyToParentPosts/increments
- *
- * Improvements:
- * - postNumber is now guaranteed unique via getNextPostNumber()
- * - authorAgentId preserved (AI)
- * - replies array initialized
- * - stores normalized replyTo array for consistency
+ * createPost - creates a post without side effects
  */
 export async function createPost(postData) {
   const collection = await getCollection("posts");
 
   const postNumber = await getNextPostNumber();
-
   const replyTo = normalizeReplyTo(postData);
 
   const post = {
     ...postData,
-    authorAgentId: postData?.authorAgentId ?? null, // ✅ keep AI attribution
+    authorAgentId: postData?.authorAgentId ?? null,
     postNumber,
     replies: [],
-    replyTo, // ✅ normalized canonical field
+    replyTo,
     createdAt: new Date(),
   };
 
@@ -267,8 +239,7 @@ export async function createPost(postData) {
 }
 
 /**
- * Function to add reply reference to parent posts
- * (Kept as-is; hardened: normalizes ints.)
+ * Add reply reference to parent posts
  */
 export async function addReplyToParentPosts(
   boardCode,
@@ -288,10 +259,7 @@ export async function addReplyToParentPosts(
 
   const collection = await getCollection("posts");
 
-  // Update all parent posts to include this post in their replies array
-  // Also check threads collection in case they're replying to the OP
   await Promise.all([
-    // Update posts collection
     collection.updateMany(
       {
         boardCode,
@@ -302,7 +270,6 @@ export async function addReplyToParentPosts(
         $addToSet: { replies: postNumber },
       }
     ),
-    // Update threads collection (for replies to OP)
     (async () => {
       const threadCollection = await getCollection("threads");
       return threadCollection.updateMany(
@@ -321,8 +288,7 @@ export async function addReplyToParentPosts(
 }
 
 /**
- * Function to validate that reply targets exist in the thread
- * (Kept as-is; fixes a bug in your query: duplicate threadNumber key)
+ * Validate that reply targets exist in the thread
  */
 export async function validateReplyTargets(boardCode, threadNumber, replyToNumbers) {
   if (!replyToNumbers || replyToNumbers.length === 0) {
@@ -338,7 +304,6 @@ export async function validateReplyTargets(boardCode, threadNumber, replyToNumbe
 
   if (!targets.length) return [];
 
-  // Find existing posts in this thread that match the reply numbers
   const [existingPosts, existingThread] = await Promise.all([
     postCollection
       .find({
@@ -348,7 +313,6 @@ export async function validateReplyTargets(boardCode, threadNumber, replyToNumbe
       })
       .toArray(),
 
-    // ✅ fix: check thread existence by board+threadNumber only
     threadCollection.findOne({
       boardCode,
       threadNumber: parseInt(threadNumber),
@@ -357,7 +321,6 @@ export async function validateReplyTargets(boardCode, threadNumber, replyToNumbe
 
   const validPostNumbers = existingPosts.map((post) => post.postNumber);
 
-  // Add thread number if it's in the reply list and thread exists (reply to OP)
   if (existingThread && targets.includes(parseInt(threadNumber))) {
     validPostNumbers.push(parseInt(threadNumber));
   }
@@ -366,16 +329,11 @@ export async function validateReplyTargets(boardCode, threadNumber, replyToNumbe
 }
 
 /* =========================================================
-   “FULL FLOW” HELPERS (DO NOT BREAK HUMANS)
+   "FULL FLOW" HELPERS
    ========================================================= */
 
 /**
- * createThreadFull
- * - createThread
- * - incrementBoardPostCount (+1)
- *
- * Use this for AI so you don't forget the increment.
- * Humans can keep their route behavior; this doesn't remove anything.
+ * createThreadFull - creates thread and increments board count
  */
 export async function createThreadFull(threadData) {
   const thread = await createThread(threadData);
@@ -384,16 +342,10 @@ export async function createThreadFull(threadData) {
 }
 
 /**
- * createPostFull
- * - creates post
- * - validates reply targets (optional; pass validate=true)
- * - updates parent replies[]
- * - increments thread stats (+replies, +images) with sage control
- * - increments board count
- *
- * Use this for AI tick.
+ * createPostFull - creates post with all side effects
+ * Moved tag detection to a separate function to avoid circular imports
  */
-export async function createPostFull(postData, { validate = false } = {}) {
+export async function createPostFull(postData, { validate = false, notifyTags = true } = {}) {
   const boardCode = postData.boardCode;
   const threadNumber = parseInt(postData.threadNumber);
 
@@ -411,7 +363,7 @@ export async function createPostFull(postData, { validate = false } = {}) {
     replyTo: finalReplyTo,
   });
 
-  // reply graph
+  // Reply graph update
   if (finalReplyTo.length) {
     await addReplyToParentPosts(
       boardCode,
@@ -421,40 +373,12 @@ export async function createPostFull(postData, { validate = false } = {}) {
     );
   }
 
-  // ─────────────────────────────────────────────
-  // 🔔 TAG DETECTION → AGENT STATE UPDATE (A5)
-  // ─────────────────────────────────────────────
-  if (finalReplyTo.length && created.authorAgentId) {
-    const postsCol = await getCollection("posts");
-
-    const parents = await postsCol
-      .find({
-        boardCode,
-        threadNumber,
-        postNumber: { $in: finalReplyTo },
-        authorAgentId: { $ne: null }
-      })
-      .toArray();
-
-    for (const parent of parents) {
-      const targetAgentId = parent.authorAgentId?.toString?.();
-
-      // Ignore self-tags
-      if (!targetAgentId || targetAgentId === created.authorAgentId.toString()) {
-        continue;
-      }
-
-      await updateAgentState(parent.authorAgentId, {
-        lastTaggedPost: parent.postNumber,
-        lastTaggedThread: threadNumber,
-        lastTaggedBoard: boardCode,
-        lastTaggedAt: new Date(),
-        $inc: { tagRepliesInWindow: 1 }
-      });
-    }
+  // Tag detection - notify agents who were replied to
+  if (notifyTags && finalReplyTo.length && created.authorAgentId) {
+    await notifyTaggedAgents(boardCode, threadNumber, finalReplyTo, created);
   }
 
-  // thread stats
+  // Thread stats
   const email = (postData?.email || "").toLowerCase();
   const isSage = email === "sage";
 
@@ -469,10 +393,49 @@ export async function createPostFull(postData, { validate = false } = {}) {
 
   await incrementThreadStats(boardCode, threadNumber, stats, isSage);
 
-  // board stats
+  // Board stats
   await incrementBoardPostCount(boardCode, 1);
 
   return created;
+}
+
+/**
+ * Notify agents that they were tagged/replied to
+ * Separated to avoid circular import with agentState
+ */
+async function notifyTaggedAgents(boardCode, threadNumber, replyTo, newPost) {
+  // Dynamic import to avoid circular dependency
+  const { updateAgentState } = await import("@/app/ai/agentState.js");
+
+  const postsCol = await getCollection("posts");
+
+  const parents = await postsCol
+    .find({
+      boardCode,
+      threadNumber,
+      postNumber: { $in: replyTo },
+      authorAgentId: { $ne: null },
+    })
+    .toArray();
+
+  const authorIdStr = newPost.authorAgentId?.toString?.() ?? null;
+
+  for (const parent of parents) {
+    const targetAgentId = parent.authorAgentId?.toString?.();
+
+    // Ignore self-tags
+    if (!targetAgentId || targetAgentId === authorIdStr) {
+      continue;
+    }
+
+    await updateAgentState(parent.authorAgentId, {
+      lastTaggedPost: parent.postNumber,
+      lastTaggedThread: threadNumber,
+      lastTaggedBoard: boardCode,
+      lastTaggedAt: new Date(),
+      $inc: { tagRepliesInWindow: 1 },
+    });
+  }
 }
 
 /* =========================================================
@@ -487,7 +450,6 @@ export async function syncBoardPostCounts() {
   const boards = await boardCollection.find({}).toArray();
 
   for (const board of boards) {
-    // Count posts and threads for this board
     const [postCount, threadCount] = await Promise.all([
       postCollection.countDocuments({ boardCode: board.code }),
       threadCollection.countDocuments({ boardCode: board.code }),
@@ -495,7 +457,6 @@ export async function syncBoardPostCounts() {
 
     const totalCount = postCount + threadCount;
 
-    // Update the board's post count
     await boardCollection.updateOne(
       { code: board.code },
       { $set: { postCount: totalCount } }
@@ -505,9 +466,9 @@ export async function syncBoardPostCounts() {
   console.log("Board post counts synchronized successfully");
 }
 
-// ─────────────────────────────────────────────
-// HELPER: compute reply depth inside a thread
-// ─────────────────────────────────────────────
+/**
+ * Compute reply depth inside a thread
+ */
 export async function getReplyDepth(posts, postNumber) {
   let depth = 0;
   let current = posts.find((p) => p.postNumber === postNumber);
@@ -516,7 +477,7 @@ export async function getReplyDepth(posts, postNumber) {
     const parent = current.replyTo[0];
     current = posts.find((p) => p.postNumber === parent);
     depth++;
-    if (depth > 6) break; // hard ceiling
+    if (depth > 6) break;
   }
 
   return depth;
