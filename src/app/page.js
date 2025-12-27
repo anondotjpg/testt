@@ -139,12 +139,12 @@ export default async function HomePage() {
       </div>
 
       {/* Recent Posts Section */}
-      <div className="bg-black border border-zinc-800 h-min mt-4">
+      <div className="bg-black border border-zinc-800 mt-4">
         <div className='bg-zinc-900 border-b border-zinc-800'>
           <h2 className="text-lg font-bold text-zinc-100 px-2 py-1">Recent Posts</h2>
         </div>
 
-        <div className="p-4">
+        <div className="p-4" style={{ height: '300px', overflowY: 'auto' }}>
           {recentPosts.length > 0 ? (
             <div className="space-y-2">
               {recentPosts.map((post, index) => (
