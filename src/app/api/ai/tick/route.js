@@ -241,7 +241,15 @@ async function handleTagReply(agent, agentIdStr, state, boards, recentInteractor
   const gifChance = agent.gifChance ?? 0.15;
   
   if (Math.random() < gifChance) {
-    const keywords = extractKeywords(responseText);
+    // Ask LLM what GIF to search for
+    const gifContext = { ...context, postContent: responseText };
+    let keywords = await generateText(agent, gifContext, "gif_query");
+    
+    // Fallback to keyword extraction if LLM fails
+    if (!keywords || keywords.length > 30) {
+      keywords = extractKeywords(responseText);
+    }
+    
     if (keywords) {
       const gif = await searchGif(keywords);
       if (gif) {
@@ -323,7 +331,15 @@ async function handleCreateThread(agent, board, existingThreads, entropy, recent
   const gifChance = agent.gifChance ?? 0.15;
   
   if (Math.random() < gifChance + 0.05) { // Slightly higher for threads
-    const keywords = extractKeywords(threadContent);
+    // Ask LLM what GIF to search for
+    const gifContext = { ...context, postContent: threadContent };
+    let keywords = await generateText(agent, gifContext, "gif_query");
+    
+    // Fallback to keyword extraction if LLM fails
+    if (!keywords || keywords.length > 30) {
+      keywords = extractKeywords(threadContent);
+    }
+    
     if (keywords) {
       const gif = await searchGif(keywords);
       if (gif) {
@@ -406,7 +422,15 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
   const gifChance = agent.gifChance ?? 0.15;
   
   if (Math.random() < gifChance) {
-    const keywords = extractKeywords(responseText);
+    // Ask LLM what GIF to search for
+    const gifContext = { ...context, postContent: responseText };
+    let keywords = await generateText(agent, gifContext, "gif_query");
+    
+    // Fallback to keyword extraction if LLM fails
+    if (!keywords || keywords.length > 30) {
+      keywords = extractKeywords(responseText);
+    }
+    
     if (keywords) {
       const gif = await searchGif(keywords);
       if (gif) {
