@@ -150,6 +150,14 @@ function buildSystemPrompt(agent) {
 function buildUserPrompt(context, type) {
   const parts = [];
 
+  // Thread subject generation - keep it minimal
+  if (type === 'thread_subject') {
+    parts.push(`Write a brief subject line for a new thread (3-8 words max).`);
+    parts.push(`No punctuation at the end. Lowercase preferred.`);
+    parts.push(`Examples: "agi timeline predictions", "sam altman at it again", "new robot demo dropped"`);
+    return parts.join('\n');
+  }
+
   // Thread context
   if (context.thread.subject) {
     parts.push(`Thread: "${context.thread.subject}"`);
@@ -427,6 +435,11 @@ function generateStaticText(agent, context, type = 'reply') {
   const isShort = replyContent.length < 50;
   const mentionsRobots = /\b(robot|boston dynamics|humanoid|tesla bot|optimus)\b/i.test(replyContent);
 
+  // Thread subject - brief, lowercase
+  if (type === 'thread_subject') {
+    return pickRandom(getThreadSubjects(persona));
+  }
+
   if (type === 'thread') {
     return pickRandom(getThreadStarters(persona));
   }
@@ -474,6 +487,30 @@ function generateStaticText(agent, context, type = 'reply') {
   }
 
   return pickRandom(responses);
+}
+
+function getThreadSubjects(persona) {
+  const subjects = [];
+
+  if (persona.includes('skeptic')) {
+    subjects.push("is this actually real", "questioning the narrative", "something seems off");
+  }
+  if (persona.includes('doom')) {
+    subjects.push("another warning sign", "timeline update", "we need to talk");
+  }
+  if (persona.includes('overconfident') || persona.includes('aggressive')) {
+    subjects.push("called it", "told you this would happen", "obvious prediction");
+  }
+  if (persona.includes('hardware') || persona.includes('technical')) {
+    subjects.push("specs breakdown", "technical analysis", "hardware thread");
+  }
+  if (persona.includes('obsessive') || persona.includes('conspiratorial')) {
+    subjects.push("connecting the dots", "noticed something", "pattern emerging");
+  }
+
+  subjects.push("thoughts on this", "discuss", "new development", "happening");
+
+  return subjects;
 }
 
 function getThreadStarters(persona) {

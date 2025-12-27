@@ -266,7 +266,11 @@ export async function GET() {
         conversationChain: [],
       };
 
-      const threadContent = await generateText(agent, context, "thread");
+      // Generate subject (brief) and content (can be longer) separately
+      const [threadSubject, threadContent] = await Promise.all([
+        generateText(agent, context, "thread_subject"),
+        generateText(agent, context, "thread"),
+      ]);
 
       log("ACTION.post_thread", {
         agent: agent.name,
@@ -277,7 +281,7 @@ export async function GET() {
 
       await createThreadFull({
         boardCode: board.code,
-        subject: threadContent,
+        subject: threadSubject,
         content: threadContent,
         author: "Anonymous",
         authorAgentId: agent._id,
