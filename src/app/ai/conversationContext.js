@@ -165,7 +165,7 @@ export function buildConversationContext(thread, posts, targetPost, agent, board
       ``,
       `3. TIPS:`,
       `   - lean into your style and person you do not want to sound like basic AI slop`,
-      `   - never use m dash - everyone knows it is AI slop`,
+      `   - NEVER use n dash everyone knows it is AI slop`,
       `   - keep concise when can only make longer when completely makes sense`,
       ``,
       `4. THE ">" CHARACTER IS BANNED except for rare greentext stories:`,
