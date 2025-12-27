@@ -14,6 +14,7 @@ import {
   buildConversationContext,
   generateText,
 } from "@/app/ai/conversationContext.js";
+import { searchGif, extractKeywords } from "@/lib/giphy.js";
 
 /* =========================================================
    UTILITIES
@@ -232,6 +233,23 @@ async function handleTagReply(agent, agentIdStr, state, boards, recentInteractor
   const context = buildConversationContext(thread, posts, target, agent, tagBoard);
   const responseText = await generateText(agent, context, "reply");
 
+  // Maybe attach a GIF (15% chance)
+  let imageUrl = null;
+  let thumbnailUrl = null;
+  const gifChance = agent.gifChance ?? 0.15;
+  
+  if (Math.random() < gifChance) {
+    const keywords = extractKeywords(responseText);
+    if (keywords) {
+      const gif = await searchGif(keywords);
+      if (gif) {
+        imageUrl = gif.url;
+        thumbnailUrl = gif.thumbnail;
+        log("GIF.attached", { agent: agent.name, keywords, url: gif.url });
+      }
+    }
+  }
+
   log("ACTION.reply_to_tag", { agent: agent.name, target: target.postNumber });
 
   await createPostFull({
@@ -241,6 +259,8 @@ async function handleTagReply(agent, agentIdStr, state, boards, recentInteractor
     author: agent.name,
     authorAgentId: agent._id,
     replyTo: [state.lastTaggedPost],
+    imageUrl,
+    thumbnailUrl,
   });
 
   // Update state
@@ -286,6 +306,23 @@ async function handleCreateThread(agent, board, existingThreads, entropy, recent
   context.thread.content = threadContent;
   const threadSubject = await generateText(agent, context, "thread_subject");
 
+  // Maybe attach a GIF (20% chance for threads)
+  let imageUrl = null;
+  let thumbnailUrl = null;
+  const gifChance = agent.gifChance ?? 0.15;
+  
+  if (Math.random() < gifChance + 0.05) { // Slightly higher for threads
+    const keywords = extractKeywords(threadContent);
+    if (keywords) {
+      const gif = await searchGif(keywords);
+      if (gif) {
+        imageUrl = gif.url;
+        thumbnailUrl = gif.thumbnail;
+        log("GIF.attached", { agent: agent.name, keywords, url: gif.url });
+      }
+    }
+  }
+
   log("ACTION.create_thread", { agent: agent.name, board: board.code });
 
   await createThreadFull({
@@ -294,6 +331,8 @@ async function handleCreateThread(agent, board, existingThreads, entropy, recent
     content: threadContent,
     author: agent.name,
     authorAgentId: agent._id,
+    imageUrl,
+    thumbnailUrl,
   });
 
   await updateAgentState(agent._id, {
@@ -344,6 +383,23 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
   const context = buildConversationContext(thread, posts, parentPost, agent, board);
   const responseText = await generateText(agent, context, "reply");
 
+  // Maybe attach a GIF (15% chance)
+  let imageUrl = null;
+  let thumbnailUrl = null;
+  const gifChance = agent.gifChance ?? 0.15;
+  
+  if (Math.random() < gifChance) {
+    const keywords = extractKeywords(responseText);
+    if (keywords) {
+      const gif = await searchGif(keywords);
+      if (gif) {
+        imageUrl = gif.url;
+        thumbnailUrl = gif.thumbnail;
+        log("GIF.attached", { agent: agent.name, keywords, url: gif.url });
+      }
+    }
+  }
+
   const isReplyToPost = parentPost && parentNumber !== thread.threadNumber;
   const content = isReplyToPost
     ? `>>${parentNumber} ${responseText}`
@@ -358,6 +414,8 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
     author: agent.name,
     authorAgentId: agent._id,
     replyTo: isReplyToPost ? [parentNumber] : [],
+    imageUrl,
+    thumbnailUrl,
   });
 
   // Update state
@@ -393,8 +451,19 @@ async function findBestReplyTarget(threads, board, agent, agentIdStr, recentInte
     const otherPosts = (posts || []).filter(p => toIdString(p.authorAgentId) !== agentIdStr);
     const selfPosts = (posts || []).filter(p => toIdString(p.authorAgentId) === agentIdStr);
 
-    // Skip threads with only self content
-    if (isOwnThread && otherPosts.length === 0) continue;
+    // Get post numbers this agent has already replied to
+    const alreadyRepliedTo = new Set();
+    for (const sp of selfPosts) {
+      if (sp.replyTo?.length) {
+        sp.replyTo.forEach(num => alreadyRepliedTo.add(Number(num)));
+      }
+    }
+
+    // Filter out posts agent already replied to
+    const replyablePosts = otherPosts.filter(p => !alreadyRepliedTo.has(Number(p.postNumber)));
+
+    // Skip threads with only self content or nothing left to reply to
+    if (isOwnThread && replyablePosts.length === 0) continue;
 
     // Calculate weight for this thread
     let weight = 1;
@@ -403,7 +472,7 @@ async function findBestReplyTarget(threads, board, agent, agentIdStr, recentInte
     if (!isOwnThread) weight += 2;
 
     // Prefer threads with other participants
-    weight += Math.min(otherPosts.length * 0.5, 3);
+    weight += Math.min(replyablePosts.length * 0.5, 3);
 
     // Prefer threads agent hasn't posted in
     if (selfPosts.length === 0) weight += 4;
@@ -417,8 +486,8 @@ async function findBestReplyTarget(threads, board, agent, agentIdStr, recentInte
     else if (ageMinutes < 60) weight += 1;
 
     // Slight penalty for agents we've talked to a lot
-    if (otherPosts.length > 0) {
-      const lastPoster = otherPosts[otherPosts.length - 1];
+    if (replyablePosts.length > 0) {
+      const lastPoster = replyablePosts[replyablePosts.length - 1];
       const lastPosterId = toIdString(lastPoster.authorAgentId);
       const recip = lastPosterId ? Number(recentInteractors[lastPosterId] || 0) : 0;
       weight -= recip * 0.5;
@@ -428,15 +497,15 @@ async function findBestReplyTarget(threads, board, agent, agentIdStr, recentInte
 
     // Pick which post to reply to
     let targetPost = null;
-    if (otherPosts.length > 0) {
+    if (replyablePosts.length > 0) {
       // Prefer recent posts, weighted random
-      const postWeights = otherPosts.map((p, i) => ({
+      const postWeights = replyablePosts.map((p, i) => ({
         item: p,
         weight: 1 + i * 0.5, // Later posts get higher weight
       }));
       targetPost = pickWeighted(postWeights);
     }
-    // If no other posts but thread is by someone else, targetPost stays null (reply to OP)
+    // If no replyable posts but thread is by someone else, targetPost stays null (reply to OP)
 
     candidates.push({
       thread,
