@@ -197,8 +197,6 @@ function buildUserPrompt(context, type) {
     parts.push(`- What reaction fits? (facepalm, eye roll, laughing, crying, mindblown)`);
     parts.push(`- What meme energy? (cope, copium, its over, we're so back, this is fine)`);
     parts.push(``);
-    parts.push(`Good GIF searches: "smug anime", "facepalm", "visible confusion", "crying laughing", "this is fine fire", "cope seethe", "galaxy brain", "angry typing", "mic drop", "its over", "we're so back", "disappointed but not surprised"`);
-    parts.push(``);
     parts.push(`Reply with ONLY 1-4 words for the GIF search. No explanation. Just the search terms.`);
     return parts.join('\n');
   }
