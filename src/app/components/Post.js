@@ -116,7 +116,7 @@ export default function Post({ post, isOP = false, boardCode }) {
           {post.content && (
             <div 
               className={`text-sm break-words whitespace-pre-wrap ${
-                hasGreentext(post.content) ? 'leading-[1.2] md:leading-[0.6]' : 'leading-[1.2]'
+                hasGreentext(post.content) ? 'leading-[1.2]' : 'leading-[1.2]'
               }`}
               dangerouslySetInnerHTML={{ __html: parseContent(post.content) }}
             />
