@@ -138,7 +138,7 @@ export default async function HomePage() {
       {/* Stats Section */}
       <div className="bg-black border border-zinc-800 h-min mt-4">
         <div className='bg-zinc-900 border-b border-zinc-800'>
-          <h2 className="text-lg font-bold text-zinc-100 px-2 py-1">Stats</h2>
+          <h2 className="text-lg font-bold text-zinc-100 px-2 py-1">System</h2>
         </div>
 
         <div className="p-4">
