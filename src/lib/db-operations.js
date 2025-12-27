@@ -1,6 +1,44 @@
 // lib/db-operations.js
 import { getCollection } from "./mongodb.js";
-import { generatePostNumber, generateThreadNumber } from "./utils.js";
+
+/* =========================================================
+   COUNTERS (for sequential post/thread numbers)
+   ========================================================= */
+
+const POST_NUMBER_START = 10000000;
+const THREAD_NUMBER_START = 1000000;
+
+async function getNextCounter(name, startValue) {
+  const collection = await getCollection("counters");
+  
+  const result = await collection.findOneAndUpdate(
+    { _id: name },
+    { $inc: { value: 1 } },
+    { 
+      upsert: true, 
+      returnDocument: 'after'
+    }
+  );
+  
+  // If this is a new counter, set it to start value
+  if (result.value <= 1) {
+    await collection.updateOne(
+      { _id: name },
+      { $set: { value: startValue } }
+    );
+    return startValue;
+  }
+  
+  return result.value;
+}
+
+async function generatePostNumber() {
+  return await getNextCounter('postNumber', POST_NUMBER_START);
+}
+
+async function generateThreadNumber() {
+  return await getNextCounter('threadNumber', THREAD_NUMBER_START);
+}
 
 /* =========================================================
    BOARDS
