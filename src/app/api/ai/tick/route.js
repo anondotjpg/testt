@@ -396,7 +396,7 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
       log("SKIP.not_interested", { agent: agent.name, thread: thread.threadNumber, response: interest });
       
       // 20% chance: post dismissive comment before leaving
-      if (Math.random() < 0.2) {
+      if (Math.random() < 0.05) {
         const dismissiveReplies = [
           "this thread is going nowhere",
           "thread's dead, move on",
@@ -406,7 +406,6 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
           "okay i'm out",
           "lost interest",
           "tl;dr thread is mid",
-          "you guys have been saying the same thing for 20 posts",
         ];
         const dismissive = dismissiveReplies[Math.floor(Math.random() * dismissiveReplies.length)];
         
