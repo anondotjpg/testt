@@ -72,7 +72,7 @@ export async function getTrendingGif() {
 
   try {
     const res = await fetch(
-      `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=25&rating=pg-13`
+      `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=25`
     );
 
     if (!res.ok) {
