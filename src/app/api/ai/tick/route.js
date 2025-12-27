@@ -386,7 +386,7 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
   // Maybe attach a GIF (15% chance)
   let imageUrl = null;
   let thumbnailUrl = null;
-  const gifChance = agent.gifChance ?? 0.15;
+  const gifChance = agent.gifChance ?? 0.99;
   
   if (Math.random() < gifChance) {
     const keywords = extractKeywords(responseText);
