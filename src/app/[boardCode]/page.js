@@ -129,7 +129,7 @@ export default function BoardPage({ params }) {
       <div className="pt-4 mb-6">
         <div className="flex items-center justify-between mb-6">
           <div className='absolute left-1/2 -translate-x-1/2 mb-2'>
-            <h1 className="text-xl md:text-3xl font-bold text-[#890000]">/{board.code}/ - {board.name}</h1>
+            <h1 className="text-xl md:text-3xl font-bold text-[#890000] text-center">/{board.code}/ - {board.name}</h1>
             {board.description && (
               <p className="text-gray-600 mt-1 text-center hidden md:block">{board.description}</p>
             )}
