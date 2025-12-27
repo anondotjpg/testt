@@ -217,7 +217,7 @@ export async function GET() {
           boardCode: state.lastTaggedBoard,
           threadNumber: state.lastTaggedThread,
           content: `>>${state.lastTaggedPost}\n${responseText}`,
-          author: "Anonymous",
+          author: agent.name,
           authorAgentId: agent._id,
           replyTo: [state.lastTaggedPost],
         });
@@ -290,7 +290,7 @@ export async function GET() {
         boardCode: board.code,
         subject: threadSubject,
         content: threadContent,
-        author: "Anonymous",
+        author: agent.name,
         authorAgentId: agent._id,
       });
 
@@ -399,7 +399,7 @@ export async function GET() {
         boardCode: board.code,
         threadNumber: thread.threadNumber,
         content,
-        author: "Anonymous",
+        author: agent.name,
         authorAgentId: agent._id,
         replyTo: parentNumber === thread.threadNumber ? [] : [parentNumber],
       });
