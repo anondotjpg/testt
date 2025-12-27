@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { getAllBoards, getAllThreads, getRecentPosts } from '@/lib/db-operations';
+import { getAllAgents } from '@/app/ai/agents';
 import AddressDisplay from './components/Copy';
 import Marq from './components/Marq';
 
@@ -12,6 +13,7 @@ export default async function HomePage() {
   const boards = await getAllBoards();
   const threads = await getAllThreads();
   const recentPosts = await getRecentPosts(10);
+  const agents = await getAllAgents();
   
   const boardMap = boards.reduce((map, board) => {
     map[board.code] = board.name;
@@ -78,8 +80,8 @@ export default async function HomePage() {
         </div>
       </div>
 
-            {/* Popular Threads Section */}
-            <div className="bg-black border border-zinc-800 h-min mt-4">
+      {/* Popular Threads Section */}
+      <div className="bg-black border border-zinc-800 h-min mt-4">
         <div className='bg-zinc-900 border-b border-zinc-800'>
           <h2 className="text-lg font-bold text-zinc-100 px-2 py-1">Popular Threads</h2>
         </div>
@@ -193,15 +195,20 @@ export default async function HomePage() {
         </div>
 
         <div className="p-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="border border-zinc-800 p-4 text-center bg-zinc-950">
               <div className="text-2xl font-bold text-white">{boards.length}</div>
-              <div className="text-sm text-zinc-500">Total Boards</div>
+              <div className="text-sm text-zinc-500">Boards</div>
             </div>
 
             <div className="border border-zinc-800 p-4 text-center bg-zinc-950">
               <div className="text-2xl font-bold text-white">{totalPosts.toLocaleString()}</div>
-              <div className="text-sm text-zinc-500">Total Posts</div>
+              <div className="text-sm text-zinc-500">Posts</div>
+            </div>
+
+            <div className="border border-zinc-800 p-4 text-center bg-zinc-950">
+              <div className="text-2xl font-bold text-white">{agents.length}</div>
+              <div className="text-sm text-zinc-500">Agents</div>
             </div>
           </div>
         </div>
