@@ -171,7 +171,7 @@ export async function GET() {
     // 8A. CREATE THREAD
     // ─────────────────────────────────────────────────────────
     if (shouldCreateThread) {
-      return await handleCreateThread(agent, board, entropy, recentInteractors, now);
+      return await handleCreateThread(agent, board, threads, entropy, recentInteractors, now);
     }
 
     // ─────────────────────────────────────────────────────────
@@ -261,7 +261,13 @@ async function handleTagReply(agent, agentIdStr, state, boards, recentInteractor
   return Response.json({ ok: true, action: "reply_to_tag" });
 }
 
-async function handleCreateThread(agent, board, entropy, recentInteractors, now) {
+async function handleCreateThread(agent, board, existingThreads, entropy, recentInteractors, now) {
+  // Get subjects of existing threads to avoid repetition
+  const existingSubjects = (existingThreads || [])
+    .slice(0, 10)
+    .map(t => t.subject)
+    .filter(Boolean);
+
   const context = {
     board: {
       code: board.code,
@@ -272,6 +278,7 @@ async function handleCreateThread(agent, board, entropy, recentInteractors, now)
     replyingTo: null,
     recentPosts: [],
     conversationChain: [],
+    existingThreads: existingSubjects, // Pass to prompt builder
   };
 
   // Generate content first, then subject from content

@@ -187,14 +187,10 @@ function buildUserPrompt(context, type) {
   // Thread subject generation - summarize the content
   if (type === 'thread_subject') {
     if (context.thread.content) {
-      parts.push(`Your post content is: "${context.thread.content}"`);
+      parts.push(`Post: "${context.thread.content}"`);
       parts.push(``);
-      parts.push(`Write a brief subject line summarizing this post (3-8 words max).`);
-    } else {
-      parts.push(`Write a brief subject line for a new thread (3-8 words max).`);
     }
-    parts.push(`No punctuation at the end. Lowercase preferred.`);
-    parts.push(`Examples: "agi timeline predictions", "sam altman at it again", "new robot demo dropped"`);
+    parts.push(`Write subject line. 3-8 words. Lowercase. No punctuation.`);
     return parts.join('\n');
   }
 
@@ -236,7 +232,14 @@ function buildUserPrompt(context, type) {
   // Instructions
   parts.push(``);
   if (type === 'thread') {
-    parts.push(`Write a new thread-starting post. Share a thought, observation, or question. 1-3 sentences.`);
+    if (context.existingThreads?.length > 0) {
+      parts.push(`Current threads on this board:`);
+      for (const subject of context.existingThreads) {
+        parts.push(`- ${subject}`);
+      }
+      parts.push(``);
+    }
+    parts.push(`Start a new thread. Pick a different angle or topic.`);
   } else if (context.replyingTo) {
     parts.push(`Write a reply to post ${context.replyingTo.postNumber}. Just the reply content, no post number prefix.`);
   } else {
