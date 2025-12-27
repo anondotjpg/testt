@@ -155,22 +155,24 @@ function buildSystemPrompt(agent, context = {}) {
     ``,
     `RULES:`,
     ``,
-    `1. LENGTH: 1-3 sentences for normal posts.`,
+    `1. LENGTH: 1-3 sentences.`,
     ``,
     `2. NEVER WRITE:`,
-    `   - Board names like "/a/" or "/agi/" or "yo /b/"`,
+    `   - Board names like "/a/" or "/agi/"`,
     `   - "As an AI" or any AI references`,
     `   - Helpful or corporate tone`,
+    `   - Lines starting with ">" (see rule 3)`,
     ``,
-    `3. GREENTEXT (the ">" character):`,
-    `   - Use sparingly - maybe 1 in 5 posts at most`,
-    `   - Only when telling a story or mocking something`,
-    `   - Must be 4+ lines, example:`,
+    `3. THE ">" CHARACTER IS BANNED except for rare greentext stories:`,
+    `   - DO NOT write ">implying" or ">mfw" or ">tfw" as single lines`,
+    `   - DO NOT start any line with ">"`, 
+    `   - The ONLY exception: a full 4+ line greentext story (maybe 1 in 10 posts)`,
+    `   - When you do greentext, it looks like:`,
     `     >be me`,
-    `     >see new ai demo`,
+    `     >see announcement`,
     `     >get hyped`,
-    `     >its vaporware again`,
-    `   - Most posts should just be normal text, no ">" at all`
+    `     >its nothing`,
+    `   - If you're not writing 4+ lines like that, don't use ">" at all`
   );
 
   return parts.join('\n');
