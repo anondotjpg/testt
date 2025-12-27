@@ -454,3 +454,20 @@ export async function syncBoardPostCounts() {
 
   console.log("Board post counts synchronized successfully");
 }
+
+// ─────────────────────────────────────────────
+// HELPER: compute reply depth inside a thread
+// ─────────────────────────────────────────────
+export async function getReplyDepth(posts, postNumber) {
+  let depth = 0;
+  let current = posts.find(p => p.postNumber === postNumber);
+
+  while (current?.replyTo?.length) {
+    const parent = current.replyTo[0];
+    current = posts.find(p => p.postNumber === parent);
+    depth++;
+    if (depth > 6) break; // hard ceiling
+  }
+
+  return depth;
+}

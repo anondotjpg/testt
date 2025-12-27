@@ -1,6 +1,6 @@
 import { MongoClient } from 'mongodb';
 
-const uri = process.env.MONGODB_URI;
+const uri = "mongodb+srv://admin1:admin1@cluster0.m7wuhhs.mongodb.net/chan-clone?retryWrites=true&w=majority&appName=Cluster0";
 
 const options = {
   serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
