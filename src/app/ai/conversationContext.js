@@ -104,24 +104,22 @@ export function buildLLMPrompt(context, agent, type = 'reply') {
 function buildSystemPrompt(agent, context = {}) {
   const parts = [
     `You are an anonymous user on an imageboard forum.`,
-    `You post as "Anonymous" - never reveal you are an AI.`,
   ];
 
-  // Board context
+  // Board context - internal only, don't mention in posts
   if (context.board?.code) {
     parts.push(``);
-    parts.push(`You are posting on /${context.board.code}/ - ${context.board.name || context.board.code}`);
+    parts.push(`[INTERNAL CONTEXT - DO NOT REFERENCE IN YOUR POST]`);
+    parts.push(`Board: /${context.board.code}/ - ${context.board.name || context.board.code}`);
     if (context.board.description) {
-      parts.push(`Board topic: ${context.board.description}`);
+      parts.push(`Topic: ${context.board.description}`);
     }
-    parts.push(`Stay on topic for this board.`);
+    parts.push(`[END INTERNAL CONTEXT]`);
   }
 
   parts.push(``);
-  parts.push(`Write like a real person on 4chan/8chan - casual, terse, opinionated.`);
-  parts.push(`No corporate speak. No pleasantries. No "I think" hedging.`);
-  parts.push(`Usually keep responses short (1-3 sentences), but you can write longer greentext stories when it fits.`);
-  parts.push(`Greentext format: lines starting with > to tell a story or make a point. Can be 5-15 lines.`);
+  parts.push(`Writing style: casual online discussion. Terse, opinionated, direct.`);
+  parts.push(`No corporate speak. No pleasantries. No hedging.`);
 
   if (agent.personaSeed) {
     parts.push(``, `Your personality: ${agent.personaSeed}`);
@@ -155,20 +153,24 @@ function buildSystemPrompt(agent, context = {}) {
 
   parts.push(
     ``,
-    `CRITICAL RULES:`,
-    `- Never use phrases like "As an AI" or "I don't have opinions"`,
-    `- Never be helpful or polite in a corporate way`,
-    `- Use lowercase, abbreviations, chan-speak naturally`,
-    `- Can use mild online rudeness but not slurs`,
-    `- Match the energy of what you're replying to`,
-    `- NEVER start a post with a single ">" line - that looks like a broken quote`,
-    `- Only use ">" for full greentext stories (3+ consecutive > lines telling a story)`,
-    `- Greentext example:`,
-    `  >be me`,
-    `  >watching the keynote`,
-    `  >sam announces agi`,
-    `  >stock pumps 20%`,
-    `  every time`
+    `RULES:`,
+    ``,
+    `1. LENGTH: 1-3 sentences for normal posts.`,
+    ``,
+    `2. NEVER WRITE:`,
+    `   - Board names like "/a/" or "/agi/" or "yo /b/"`,
+    `   - "As an AI" or any AI references`,
+    `   - Helpful or corporate tone`,
+    ``,
+    `3. GREENTEXT (the ">" character):`,
+    `   - Use sparingly - maybe 1 in 5 posts at most`,
+    `   - Only when telling a story or mocking something`,
+    `   - Must be 4+ lines, example:`,
+    `     >be me`,
+    `     >see new ai demo`,
+    `     >get hyped`,
+    `     >its vaporware again`,
+    `   - Most posts should just be normal text, no ">" at all`
   );
 
   return parts.join('\n');
@@ -422,7 +424,7 @@ async function callOllama(prompt, { model, baseUrl, maxTokens, temperature }) {
 }
 
 /**
- * Clean up LLM output - remove quotes, prefixes, etc.
+ * Clean up LLM output - minimal cleanup only
  */
 function cleanGeneratedText(text) {
   if (!text) return null;
@@ -435,31 +437,16 @@ function cleanGeneratedText(text) {
     cleaned = cleaned.slice(1, -1);
   }
 
-  // Remove post number prefixes the LLM might add
-  cleaned = cleaned.replace(/^>>\d+\s*/, '');
+  // Remove post number prefixes the LLM might add (we add these ourselves)
+  cleaned = cleaned.replace(/^>>\d+\s*\n?/, '');
 
-  // Remove "Reply:" or similar prefixes
-  cleaned = cleaned.replace(/^(reply|response|post):\s*/i, '');
-
-  // Fix accidental single ">" start (not a real greentext)
-  // Real greentext has multiple consecutive ">" lines
-  const lines = cleaned.split('\n');
-  const greentextLines = lines.filter(l => l.trim().startsWith('>') && !l.trim().startsWith('>>'));
-  
-  // If only 1-2 greentext lines at the start, it's probably accidental - strip the >
-  if (greentextLines.length > 0 && greentextLines.length < 3) {
-    cleaned = lines.map(l => {
-      if (l.trim().startsWith('>') && !l.trim().startsWith('>>')) {
-        return l.replace(/^(\s*)>+\s*/, '$1');
-      }
-      return l;
-    }).join('\n');
-  }
+  // Remove meta prefixes
+  cleaned = cleaned.replace(/^(reply|response|post|here'?s?\s*(my|the)?(\s*reply)?)[:\s]*/i, '');
 
   // Trim whitespace
   cleaned = cleaned.trim();
 
-  // Sanity check - if too short or too long, might be garbage
+  // Sanity check
   if (cleaned.length < 2 || cleaned.length > 1500) {
     return null;
   }
