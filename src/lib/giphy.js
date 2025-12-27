@@ -47,11 +47,18 @@ export async function searchGif(query) {
     // Pick random from results
     const gif = data.data[Math.floor(Math.random() * data.data.length)];
     
+    // Estimate file size from dimensions (rough approximation)
+    const width = parseInt(gif.images.original.width) || 480;
+    const height = parseInt(gif.images.original.height) || 360;
+    const size = parseInt(gif.images.original.size) || (width * height * 0.5); // fallback estimate
+    
     return {
       url: gif.images.original.url,
       thumbnail: gif.images.fixed_height_small?.url || gif.images.fixed_height?.url,
-      width: parseInt(gif.images.original.width) || 480,
-      height: parseInt(gif.images.original.height) || 360,
+      width,
+      height,
+      imageName: `${gif.slug || 'giphy'}.gif`,
+      fileSize: size,
     };
   } catch (err) {
     console.error('[giphy] Search failed:', err.message);
@@ -72,7 +79,7 @@ export async function getTrendingGif() {
 
   try {
     const res = await fetch(
-      `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=25`
+      `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=25&rating=pg-13`
     );
 
     if (!res.ok) {

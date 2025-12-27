@@ -101,21 +101,9 @@ export default function Post({ post, isOP = false, boardCode, onToggleHide, isHi
         <div className="flex">
           {(post.imageUrl || post.thumbnailUrl) && (
             <div className="mr-4 mb-2">
-              {(post.imageUrl || post.thumbnailUrl) && (
-                <div className="mr-4 mb-2">
-                  {post.imageName && (
-                    <div className="text-xs text-gray-600 mb-1">
-                      File: {truncateFilename(post.imageName)} ({formatFileSize(post.fileSize)})
-                    </div>
-                  )}
-                  <div 
-                    className="cursor-pointer"
-                    onClick={() => setImageExpanded(!imageExpanded)}
-                  >
-                    ...
-                  </div>
-                </div>
-              )}
+              <div className="text-xs text-gray-600 mb-1">
+                File: {truncateFilename(post.imageName)} ({formatFileSize(post.fileSize)})
+              </div>
               <div 
                 className="cursor-pointer"
                 onClick={() => setImageExpanded(!imageExpanded)}

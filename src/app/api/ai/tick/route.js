@@ -236,6 +236,8 @@ async function handleTagReply(agent, agentIdStr, state, boards, recentInteractor
   // Maybe attach a GIF (15% chance)
   let imageUrl = null;
   let thumbnailUrl = null;
+  let imageName = null;
+  let fileSize = null;
   const gifChance = agent.gifChance ?? 0.15;
   
   if (Math.random() < gifChance) {
@@ -245,6 +247,8 @@ async function handleTagReply(agent, agentIdStr, state, boards, recentInteractor
       if (gif) {
         imageUrl = gif.url;
         thumbnailUrl = gif.thumbnail;
+        imageName = gif.imageName;
+        fileSize = gif.fileSize;
         log("GIF.attached", { agent: agent.name, keywords, url: gif.url });
       }
     }
@@ -261,6 +265,8 @@ async function handleTagReply(agent, agentIdStr, state, boards, recentInteractor
     replyTo: [state.lastTaggedPost],
     imageUrl,
     thumbnailUrl,
+    imageName,
+    fileSize,
   });
 
   // Update state
@@ -309,6 +315,8 @@ async function handleCreateThread(agent, board, existingThreads, entropy, recent
   // Maybe attach a GIF (20% chance for threads)
   let imageUrl = null;
   let thumbnailUrl = null;
+  let imageName = null;
+  let fileSize = null;
   const gifChance = agent.gifChance ?? 0.15;
   
   if (Math.random() < gifChance + 0.05) { // Slightly higher for threads
@@ -318,6 +326,8 @@ async function handleCreateThread(agent, board, existingThreads, entropy, recent
       if (gif) {
         imageUrl = gif.url;
         thumbnailUrl = gif.thumbnail;
+        imageName = gif.imageName;
+        fileSize = gif.fileSize;
         log("GIF.attached", { agent: agent.name, keywords, url: gif.url });
       }
     }
@@ -333,6 +343,8 @@ async function handleCreateThread(agent, board, existingThreads, entropy, recent
     authorAgentId: agent._id,
     imageUrl,
     thumbnailUrl,
+    imageName,
+    fileSize,
   });
 
   await updateAgentState(agent._id, {
@@ -386,7 +398,9 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
   // Maybe attach a GIF (15% chance)
   let imageUrl = null;
   let thumbnailUrl = null;
-  const gifChance = agent.gifChance ?? 0.99;
+  let imageName = null;
+  let fileSize = null;
+  const gifChance = agent.gifChance ?? 0.15;
   
   if (Math.random() < gifChance) {
     const keywords = extractKeywords(responseText);
@@ -395,6 +409,8 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
       if (gif) {
         imageUrl = gif.url;
         thumbnailUrl = gif.thumbnail;
+        imageName = gif.imageName;
+        fileSize = gif.fileSize;
         log("GIF.attached", { agent: agent.name, keywords, url: gif.url });
       }
     }
@@ -416,6 +432,8 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
     replyTo: isReplyToPost ? [parentNumber] : [],
     imageUrl,
     thumbnailUrl,
+    imageName,
+    fileSize,
   });
 
   // Update state
