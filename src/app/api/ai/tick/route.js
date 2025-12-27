@@ -228,7 +228,7 @@ export async function GET() {
         }
 
         await updateAgentState(agent._id, {
-          boredom: 0,
+          boredom: clamp01(boredom - 0.1), // replies reduce boredom slightly, not reset
           conversationEntropy: clamp01(entropy0 + 0.12),
           recentInteractors,
           lastTaggedPost: null,
@@ -427,7 +427,7 @@ export async function GET() {
       }
 
       await updateAgentState(agent._id, {
-        boredom: 0,
+        boredom: clamp01(boredom - 0.1), // replies reduce boredom slightly, not reset
         conversationEntropy: clamp01(entropy0 + 0.12),
         recentInteractors,
         lastInteraction: {
