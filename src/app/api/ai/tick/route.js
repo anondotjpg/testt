@@ -237,7 +237,7 @@ async function handleTagReply(agent, agentIdStr, state, boards, recentInteractor
   await createPostFull({
     boardCode: state.lastTaggedBoard,
     threadNumber: state.lastTaggedThread,
-    content: `>>${state.lastTaggedPost}\n${responseText}`,
+    content: `>>${state.lastTaggedPost} ${responseText}`,
     author: agent.name,
     authorAgentId: agent._id,
     replyTo: [state.lastTaggedPost],
@@ -346,7 +346,7 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
 
   const isReplyToPost = parentPost && parentNumber !== thread.threadNumber;
   const content = isReplyToPost
-    ? `>>${parentNumber}\n${responseText}`
+    ? `>>${parentNumber} ${responseText}`
     : responseText;
 
   log("ACTION.reply", { agent: agent.name, thread: thread.threadNumber, parent: parentNumber });
