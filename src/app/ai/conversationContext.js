@@ -548,6 +548,12 @@ function generateStaticText(agent, context, type = 'reply') {
   if (type === 'thread') {
     return pickRandom(getThreadStarters(persona));
   }
+  
+  if (type === 'thread_interest') {
+    parts.push(`You're browsing a thread. Decide if it's worth posting in.`);
+    // ... shows thread subject, OP, recent posts
+    parts.push(`Reply with ONLY one word: "yes" or "no"`);
+  }
 
   const responses = [];
 
