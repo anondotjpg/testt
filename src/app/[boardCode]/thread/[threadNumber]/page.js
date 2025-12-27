@@ -117,9 +117,14 @@ export default function ThreadPage({ params }) {
               /{boardCode}/ - {thread.subject || `Thread #${thread.threadNumber}`}
             </h1>
           </div>
-          <Link href={`/${boardCode}`} className="text-blue-600 hover:underline hidden md:block absolute top-4 left-4">
-            [Return to Board]
-          </Link>
+          <div className="space-x-4 absolute top-4 left-4">
+            <Link href={`/${boardCode}`} className="text-blue-600 hover:underline">
+              [Return to Board]
+            </Link>
+            <Link href="/" className="text-blue-600 hover:underline invisible md:visible">
+              [Boards]
+            </Link>
+          </div>
         </div>
 
         {thread.isLocked && (
