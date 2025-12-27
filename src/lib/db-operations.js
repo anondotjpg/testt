@@ -137,7 +137,12 @@ export async function updateThread(boardCode, threadNumber, updateData) {
   );
 }
 
-export async function incrementThreadStats(boardCode, threadNumber, stats, isSage = false) {
+export async function incrementThreadStats(
+  boardCode,
+  threadNumber,
+  stats,
+  isSage = false
+) {
   const collection = await getCollection("threads");
   const updateData = { $inc: stats };
 
@@ -209,7 +214,7 @@ export async function getNextPostNumber(boardCode = null) {
  * NEW: normalize replyTo inputs so you can pass:
  * - replyTo (array of numbers)
  * - replyToNumbers (array of numbers)
- * - replyToNumbers (legacy typo)
+ * - replyToNumber (single number)
  *
  * Stored field is always `replyTo: number[]`
  */
@@ -217,7 +222,8 @@ function normalizeReplyTo(postData) {
   const raw =
     postData?.replyTo ??
     postData?.replyToNumbers ??
-    postData?.replyToNumber ?? // safety if any variants exist
+    postData?.replyToNumber ??
+    postData?.replyToNumbersLegacy ??
     [];
 
   const arr = Array.isArray(raw) ? raw : [raw];
@@ -260,10 +266,15 @@ export async function createPost(postData) {
 }
 
 /**
- * NEW: Function to add reply reference to parent posts
- * (Kept as-is; slight hardening: normalizes ints.)
+ * Function to add reply reference to parent posts
+ * (Kept as-is; hardened: normalizes ints.)
  */
-export async function addReplyToParentPosts(boardCode, threadNumber, postNumber, replyToNumbers) {
+export async function addReplyToParentPosts(
+  boardCode,
+  threadNumber,
+  postNumber,
+  replyToNumbers
+) {
   if (!replyToNumbers || replyToNumbers.length === 0) {
     return;
   }
@@ -309,7 +320,7 @@ export async function addReplyToParentPosts(boardCode, threadNumber, postNumber,
 }
 
 /**
- * NEW: Function to validate that reply targets exist in the thread
+ * Function to validate that reply targets exist in the thread
  * (Kept as-is; fixes a bug in your query: duplicate threadNumber key)
  */
 export async function validateReplyTargets(boardCode, threadNumber, replyToNumbers) {
@@ -336,7 +347,7 @@ export async function validateReplyTargets(boardCode, threadNumber, replyToNumbe
       })
       .toArray(),
 
-    // ✅ fix: don't repeat threadNumber twice; check OP existence by threadNumber only
+    // ✅ fix: check thread existence by board+threadNumber only
     threadCollection.findOne({
       boardCode,
       threadNumber: parseInt(threadNumber),
@@ -354,7 +365,7 @@ export async function validateReplyTargets(boardCode, threadNumber, replyToNumbe
 }
 
 /* =========================================================
-   NEW “FULL FLOW” HELPERS (DO NOT BREAK HUMANS)
+   “FULL FLOW” HELPERS (DO NOT BREAK HUMANS)
    ========================================================= */
 
 /**
@@ -401,7 +412,12 @@ export async function createPostFull(postData, { validate = false } = {}) {
 
   // reply graph
   if (finalReplyTo.length) {
-    await addReplyToParentPosts(boardCode, threadNumber, created.postNumber, finalReplyTo);
+    await addReplyToParentPosts(
+      boardCode,
+      threadNumber,
+      created.postNumber,
+      finalReplyTo
+    );
   }
 
   // thread stats
@@ -460,11 +476,11 @@ export async function syncBoardPostCounts() {
 // ─────────────────────────────────────────────
 export async function getReplyDepth(posts, postNumber) {
   let depth = 0;
-  let current = posts.find(p => p.postNumber === postNumber);
+  let current = posts.find((p) => p.postNumber === postNumber);
 
   while (current?.replyTo?.length) {
     const parent = current.replyTo[0];
-    current = posts.find(p => p.postNumber === parent);
+    current = posts.find((p) => p.postNumber === parent);
     depth++;
     if (depth > 6) break; // hard ceiling
   }
