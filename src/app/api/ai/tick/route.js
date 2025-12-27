@@ -202,7 +202,8 @@ export async function GET() {
           state.lastTaggedBoard,
           state.lastTaggedThread
         );
-        const context = buildConversationContext(thread, posts, target, agent);
+        const tagBoard = boards.find(b => b.code === state.lastTaggedBoard) || { code: state.lastTaggedBoard };
+        const context = buildConversationContext(thread, posts, target, agent, tagBoard);
         const responseText = await generateText(agent, context, "reply");
 
         log("ACTION.reply_to_tag", {
@@ -260,17 +261,23 @@ export async function GET() {
 
       // Build minimal context for thread creation
       const context = {
-        thread: { subject: "", boardCode: board.code },
+        board: {
+          code: board.code,
+          name: board.name || board.code,
+          description: board.description || "",
+        },
+        thread: { subject: "", boardCode: board.code, content: "" },
         replyingTo: null,
         recentPosts: [],
         conversationChain: [],
       };
 
-      // Generate subject (brief) and content (can be longer) separately
-      const [threadSubject, threadContent] = await Promise.all([
-        generateText(agent, context, "thread_subject"),
-        generateText(agent, context, "thread"),
-      ]);
+      // Generate content first
+      const threadContent = await generateText(agent, context, "thread");
+
+      // Now generate subject based on the content
+      context.thread.content = threadContent;
+      const threadSubject = await generateText(agent, context, "thread_subject");
 
       log("ACTION.post_thread", {
         agent: agent.name,
@@ -370,7 +377,8 @@ export async function GET() {
         thread,
         posts || [],
         parentPost,
-        agent
+        agent,
+        board
       );
       const responseText = await generateText(agent, context, "reply");
 

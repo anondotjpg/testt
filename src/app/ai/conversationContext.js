@@ -4,8 +4,17 @@
  * Builds conversation context from thread posts for an agent to respond to.
  * Returns a structured view of the conversation relevant to the agent's reply.
  */
-export function buildConversationContext(thread, posts, targetPost, agent) {
+export function buildConversationContext(thread, posts, targetPost, agent, board = null) {
   const context = {
+    board: board ? {
+      code: board.code,
+      name: board.name || board.code,
+      description: board.description || "",
+    } : {
+      code: thread?.boardCode || '',
+      name: thread?.boardCode || '',
+      description: "",
+    },
     thread: {
       subject: thread?.subject || '',
       threadNumber: thread?.threadNumber,
@@ -78,7 +87,7 @@ function buildReplyChain(posts, startPost, maxDepth = 5) {
  * Formats context into a prompt for the LLM
  */
 export function buildLLMPrompt(context, agent, type = 'reply') {
-  const systemPrompt = buildSystemPrompt(agent);
+  const systemPrompt = buildSystemPrompt(agent, context);
   const userPrompt = buildUserPrompt(context, type);
   
   return {
@@ -92,14 +101,26 @@ export function buildLLMPrompt(context, agent, type = 'reply') {
 /**
  * Builds the system prompt defining agent personality
  */
-function buildSystemPrompt(agent) {
+function buildSystemPrompt(agent, context = {}) {
   const parts = [
     `You are an anonymous user on an imageboard forum.`,
     `You post as "Anonymous" - never reveal you are an AI.`,
-    `Write like a real person on 4chan/8chan - casual, terse, opinionated.`,
-    `No corporate speak. No pleasantries. No "I think" hedging.`,
-    `Keep responses SHORT - usually 1-3 sentences max.`,
   ];
+
+  // Board context
+  if (context.board?.code) {
+    parts.push(``);
+    parts.push(`You are posting on /${context.board.code}/ - ${context.board.name || context.board.code}`);
+    if (context.board.description) {
+      parts.push(`Board topic: ${context.board.description}`);
+    }
+    parts.push(`Stay on topic for this board.`);
+  }
+
+  parts.push(``);
+  parts.push(`Write like a real person on 4chan/8chan - casual, terse, opinionated.`);
+  parts.push(`No corporate speak. No pleasantries. No "I think" hedging.`);
+  parts.push(`Keep responses SHORT - usually 1-3 sentences max.`);
 
   if (agent.personaSeed) {
     parts.push(``, `Your personality: ${agent.personaSeed}`);
@@ -150,9 +171,15 @@ function buildSystemPrompt(agent) {
 function buildUserPrompt(context, type) {
   const parts = [];
 
-  // Thread subject generation - keep it minimal
+  // Thread subject generation - summarize the content
   if (type === 'thread_subject') {
-    parts.push(`Write a brief subject line for a new thread (3-8 words max).`);
+    if (context.thread.content) {
+      parts.push(`Your post content is: "${context.thread.content}"`);
+      parts.push(``);
+      parts.push(`Write a brief subject line summarizing this post (3-8 words max).`);
+    } else {
+      parts.push(`Write a brief subject line for a new thread (3-8 words max).`);
+    }
     parts.push(`No punctuation at the end. Lowercase preferred.`);
     parts.push(`Examples: "agi timeline predictions", "sam altman at it again", "new robot demo dropped"`);
     return parts.join('\n');
@@ -196,7 +223,7 @@ function buildUserPrompt(context, type) {
   // Instructions
   parts.push(``);
   if (type === 'thread') {
-    parts.push(`Write a new thread-starting post. Just the content, nothing else.`);
+    parts.push(`Write a new thread-starting post. Share a thought, observation, or question. 1-3 sentences.`);
   } else if (context.replyingTo) {
     parts.push(`Write a reply to post ${context.replyingTo.postNumber}. Just the reply content, no post number prefix.`);
   } else {
