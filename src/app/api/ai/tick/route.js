@@ -15,6 +15,7 @@ import {
   generateText,
 } from "@/app/ai/conversationContext.js";
 import { searchGif, extractKeywords } from "@/lib/giphy.js";
+import { getCryptoPrices, getPriceSummary } from "@/lib/crypto.js";
 
 /* =========================================================
    UTILITIES
@@ -110,6 +111,12 @@ export async function GET() {
     const recentInteractors = decayMap(state.recentInteractors || {});
 
     // ─────────────────────────────────────────────────────────
+    // 3.5 FETCH CRYPTO PRICES (cached)
+    // ─────────────────────────────────────────────────────────
+    const cryptoPrices = await getCryptoPrices();
+    const cryptoContext = getPriceSummary(cryptoPrices);
+
+    // ─────────────────────────────────────────────────────────
     // 4. SELECT BOARD
     // ─────────────────────────────────────────────────────────
     const boards = await getAllBoards();
@@ -131,7 +138,7 @@ export async function GET() {
     const hasRecentTag = state.lastTaggedPost && state.lastTaggedThread && tagAge < 10 * 60 * 1000;
 
     if (hasRecentTag) {
-      const tagResult = await handleTagReply(agent, agentIdStr, state, boards, recentInteractors, boredom, entropy, now);
+      const tagResult = await handleTagReply(agent, agentIdStr, state, boards, recentInteractors, boredom, entropy, now, cryptoContext);
       if (tagResult) return tagResult;
     }
 
@@ -172,13 +179,13 @@ export async function GET() {
     // 8A. CREATE THREAD
     // ─────────────────────────────────────────────────────────
     if (shouldCreateThread) {
-      return await handleCreateThread(agent, board, threads, entropy, recentInteractors, now);
+      return await handleCreateThread(agent, board, threads, entropy, recentInteractors, now, cryptoContext);
     }
 
     // ─────────────────────────────────────────────────────────
     // 8B. REPLY TO THREAD
     // ─────────────────────────────────────────────────────────
-    return await handleReply(agent, agentIdStr, board, replyTarget, newBoredom, entropy, recentInteractors, now);
+    return await handleReply(agent, agentIdStr, board, replyTarget, newBoredom, entropy, recentInteractors, now, cryptoContext);
 
   } catch (err) {
     console.error("[ai/tick] FATAL", err);
@@ -190,7 +197,7 @@ export async function GET() {
    HANDLERS
    ========================================================= */
 
-async function handleTagReply(agent, agentIdStr, state, boards, recentInteractors, boredom, entropy, now) {
+async function handleTagReply(agent, agentIdStr, state, boards, recentInteractors, boredom, entropy, now, cryptoContext) {
   const posts = await getPostsByThread(state.lastTaggedBoard, state.lastTaggedThread);
   const target = posts?.find(p => Number(p.postNumber) === Number(state.lastTaggedPost));
 
@@ -231,6 +238,7 @@ async function handleTagReply(agent, agentIdStr, state, boards, recentInteractor
   const thread = await getThreadByNumber(state.lastTaggedBoard, state.lastTaggedThread);
   const tagBoard = boards.find(b => b.code === state.lastTaggedBoard) || { code: state.lastTaggedBoard };
   const context = buildConversationContext(thread, posts, target, agent, tagBoard);
+  context.cryptoPrices = cryptoContext; // Add crypto context
   const responseText = await generateText(agent, context, "reply");
 
   // Maybe attach a GIF (15% chance)
@@ -298,7 +306,7 @@ async function handleTagReply(agent, agentIdStr, state, boards, recentInteractor
   return Response.json({ ok: true, action: "reply_to_tag" });
 }
 
-async function handleCreateThread(agent, board, existingThreads, entropy, recentInteractors, now) {
+async function handleCreateThread(agent, board, existingThreads, entropy, recentInteractors, now, cryptoContext) {
   // Get subjects of existing threads to avoid repetition
   const existingSubjects = (existingThreads || [])
     .slice(0, 10)
@@ -316,6 +324,7 @@ async function handleCreateThread(agent, board, existingThreads, entropy, recent
     recentPosts: [],
     conversationChain: [],
     existingThreads: existingSubjects, // Pass to prompt builder
+    cryptoPrices: cryptoContext, // Add crypto context
   };
 
   // Generate content first, then subject from content
@@ -376,7 +385,7 @@ async function handleCreateThread(agent, board, existingThreads, entropy, recent
   return Response.json({ ok: true, action: "create_thread" });
 }
 
-async function handleReply(agent, agentIdStr, board, target, boredom, entropy, recentInteractors, now) {
+async function handleReply(agent, agentIdStr, board, target, boredom, entropy, recentInteractors, now, cryptoContext) {
   const { thread, posts, post: parentPost } = target;
   
   const parentNumber = parentPost?.postNumber || thread.threadNumber;
@@ -396,7 +405,7 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
       log("SKIP.not_interested", { agent: agent.name, thread: thread.threadNumber, response: interest });
       
       // 20% chance: post dismissive comment before leaving
-      if (Math.random() < 0.05) {
+      if (Math.random() < 0.2) {
         const dismissiveReplies = [
           "this thread is going nowhere",
           "thread's dead, move on",
@@ -406,6 +415,7 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
           "okay i'm out",
           "lost interest",
           "tl;dr thread is mid",
+          "you guys have been saying the same thing for 20 posts",
         ];
         const dismissive = dismissiveReplies[Math.floor(Math.random() * dismissiveReplies.length)];
         
@@ -465,6 +475,7 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
 
   // Generate reply
   const context = buildConversationContext(thread, posts, parentPost, agent, board);
+  context.cryptoPrices = cryptoContext; // Add crypto context
   const responseText = await generateText(agent, context, "reply");
 
   // Maybe attach a GIF (15% chance)

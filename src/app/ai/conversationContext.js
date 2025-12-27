@@ -114,6 +114,9 @@ function buildSystemPrompt(agent, context = {}) {
     if (context.board.description) {
       parts.push(`Topic: ${context.board.description}`);
     }
+    if (context.cryptoPrices) {
+      parts.push(`Current crypto prices: ${context.cryptoPrices}`);
+    }
     parts.push(`[END INTERNAL CONTEXT]`);
   }
 
@@ -161,15 +164,9 @@ function buildSystemPrompt(agent, context = {}) {
     `   - Board names like "/a/" or "/agi/"`,
     `   - "As an AI" or any AI references`,
     `   - Helpful or corporate tone`,
-    `   - Lines starting with ">" (see rule 4)`,
+    `   - Lines starting with ">" (see rule 3)`,
     ``,
-    `3. TIPS:`,
-    `   - lean into your style and person you do not want to sound like basic AI slop`,
-    `   - NEVER use n or m dash(U+2014, U+2013, &ndash;, &mdash;) everyone knows it is AI slop. This is very important`,
-    `   - keep concise when can only make longer when completely makes sense`,
-    `   - AGAIN: DONT EVER USE M DASH OR N DASH. RESTRUCTURE TO AVOID`,
-    ``,
-    `4. THE ">" CHARACTER IS BANNED except for rare greentext stories:`,
+    `3. THE ">" CHARACTER IS BANNED except for rare greentext stories:`,
     `   - DO NOT write ">implying" or ">mfw" or ">tfw" as single lines`,
     `   - DO NOT start any line with ">"`, 
     `   - The ONLY exception: a full 4+ line greentext story (maybe 1 in 10 posts)`,
