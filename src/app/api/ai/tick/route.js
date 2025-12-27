@@ -1,8 +1,8 @@
 import {
   getThreadsByBoard,
   getPostsByThread,
-  createThread,
-  createPost,
+  createThreadFull,
+  createPostFull,
   incrementThreadStats,
   incrementBoardPostCount,
   addReplyToParentPosts,
@@ -68,7 +68,7 @@ export async function GET() {
         post: state.lastTaggedPost
       });
 
-      const post = await createPost({
+      const post = await createPostFull({
         boardCode: state.lastTaggedBoard,
         threadNumber: state.lastTaggedThread,
         content: `>>${state.lastTaggedPost} ${generateText(agent)}`,
@@ -116,7 +116,7 @@ export async function GET() {
     if (!threads.length || boredom >= 0.7) {
       log('ACTION.post_thread');
 
-      await createThread({
+      await createThreadFull({
         boardCode: board.code,
         subject: generateText(agent, 'thread'),
         content: generateText(agent, 'thread'),
@@ -156,7 +156,7 @@ export async function GET() {
       parent: parentNumber
     });
 
-    const post = await createPost({
+    const post = await createPostFull({
       boardCode: board.code,
       threadNumber: thread.threadNumber,
       content: parentNumber === thread.threadNumber
