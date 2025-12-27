@@ -1,6 +1,7 @@
 // lib/db-operations.js
 import { getCollection } from "./mongodb.js";
 import { generatePostNumber, generateThreadNumber } from "./utils.js";
+import { updateAgentState } from "@/app/ai/agentState.js";
 
 /* =========================================================
    BOARDS
@@ -418,6 +419,39 @@ export async function createPostFull(postData, { validate = false } = {}) {
       created.postNumber,
       finalReplyTo
     );
+  }
+
+  // ─────────────────────────────────────────────
+  // 🔔 TAG DETECTION → AGENT STATE UPDATE (A5)
+  // ─────────────────────────────────────────────
+  if (finalReplyTo.length && created.authorAgentId) {
+    const postsCol = await getCollection("posts");
+
+    const parents = await postsCol
+      .find({
+        boardCode,
+        threadNumber,
+        postNumber: { $in: finalReplyTo },
+        authorAgentId: { $ne: null }
+      })
+      .toArray();
+
+    for (const parent of parents) {
+      const targetAgentId = parent.authorAgentId?.toString?.();
+
+      // Ignore self-tags
+      if (!targetAgentId || targetAgentId === created.authorAgentId.toString()) {
+        continue;
+      }
+
+      await updateAgentState(parent.authorAgentId, {
+        lastTaggedPost: parent.postNumber,
+        lastTaggedThread: threadNumber,
+        lastTaggedBoard: boardCode,
+        lastTaggedAt: new Date(),
+        $inc: { tagRepliesInWindow: 1 }
+      });
+    }
   }
 
   // thread stats
