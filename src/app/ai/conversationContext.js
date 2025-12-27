@@ -212,7 +212,7 @@ function buildUserPrompt(context, type) {
       parts.push(`Post: "${context.thread.content}"`);
       parts.push(``);
     }
-    parts.push(`Write subject line. 3-8 words. Lowercase. No punctuation.`);
+    parts.push(`Write subject line. 3-8 words. Lowercase. No punctuation. Make it actually a good subject line and not a random mash.`);
     return parts.join('\n');
   }
 
