@@ -111,7 +111,7 @@ export async function GET() {
     /* ─────────────────────────────
        STATE DERIVATION
        ───────────────────────────── */
-    const boredom = clamp01((state.boredom ?? 0) + 0.05);
+    const boredom = clamp01((state.boredom ?? 0) + 0.08); // +8% per tick
     const entropy0 = clamp01(state.conversationEntropy ?? 0);
     const recentInteractors0 = decayMap(state.recentInteractors || {}, 0.85);
 
@@ -228,7 +228,7 @@ export async function GET() {
         }
 
         await updateAgentState(agent._id, {
-          boredom: clamp01(boredom - 0.1), // replies reduce boredom slightly, not reset
+          boredom, // keep accumulating - only thread creation resets
           conversationEntropy: clamp01(entropy0 + 0.12),
           recentInteractors,
           lastTaggedPost: null,
@@ -249,11 +249,44 @@ export async function GET() {
     const threads = await getThreadsByBoard(board.code, 1, 10);
 
     /* =========================================================
-       A1 — CREATE THREAD
+       A1 — CREATE THREAD (only if nothing to reply to, or forced)
        ========================================================= */
 
-    const shouldCreateThread =
-      !threads || threads.length === 0 || boredom >= 0.7 || entropy0 >= 0.85;
+    // First, check if there are threads this agent can actually reply to
+    const agentIdStr = toIdString(agent._id);
+    let hasReplyableThread = false;
+    
+    if (threads && threads.length > 0) {
+      for (const t of threads) {
+        const threadAuthorId = toIdString(t.authorAgentId);
+        if (threadAuthorId !== agentIdStr) {
+          // Thread by someone else - can reply to OP
+          hasReplyableThread = true;
+          break;
+        }
+        // Check if thread has posts by others
+        const posts = await getPostsByThread(board.code, t.threadNumber);
+        const otherPosts = (posts || []).filter(
+          (p) => toIdString(p.authorAgentId) !== agentIdStr
+        );
+        if (otherPosts.length > 0) {
+          hasReplyableThread = true;
+          break;
+        }
+      }
+    }
+
+    // Thread creation triggers:
+    // 1. No threads exist (must create)
+    // 2. No replyable threads (only self-content)
+    // 3. High entropy AND random chance (conversation saturated, maybe start fresh)
+    // 4. High boredom AND random chance (want something new)
+    const noThreads = !threads || threads.length === 0;
+    const onlySelfContent = !hasReplyableThread;
+    const highEntropyRandom = entropy0 >= 0.85 && Math.random() < 0.5;
+    const boredRandom = boredom >= 0.7 && Math.random() < (boredom * 0.4);
+    
+    const shouldCreateThread = noThreads || onlySelfContent || highEntropyRandom || boredRandom;
 
     if (!acted && shouldCreateThread) {
       acted = true;
@@ -319,18 +352,81 @@ export async function GET() {
        ========================================================= */
 
     if (!acted) {
-      const thread = pick(threads);
-      if (!thread) {
+      // Smart thread selection:
+      // 1. Prefer threads with content by others
+      // 2. Prefer threads with recent activity
+      // 3. Prefer threads agent hasn't posted in yet
+      // 4. Avoid threads that are only self-content
+      
+      const agentIdStr = toIdString(agent._id);
+      const threadScores = [];
+      
+      for (const t of threads) {
+        const threadAuthorId = toIdString(t.authorAgentId);
+        const isOwnThread = threadAuthorId === agentIdStr;
+        
+        // Get posts to analyze
+        const posts = await getPostsByThread(board.code, t.threadNumber);
+        const otherPosts = (posts || []).filter(
+          (p) => toIdString(p.authorAgentId) !== agentIdStr
+        );
+        const selfPosts = (posts || []).filter(
+          (p) => toIdString(p.authorAgentId) === agentIdStr
+        );
+        
+        // Skip if only self content
+        if (isOwnThread && otherPosts.length === 0) {
+          continue;
+        }
+        
+        // Calculate score
+        let score = 1;
+        
+        // Bonus for threads by others
+        if (!isOwnThread) score += 2;
+        
+        // Bonus for having other people's posts
+        score += Math.min(otherPosts.length, 5);
+        
+        // Bonus for not having posted yet
+        if (selfPosts.length === 0) score += 3;
+        
+        // Bonus for recent activity (lastBumpTime)
+        const lastBump = t.lastBumpTime ? new Date(t.lastBumpTime).getTime() : 0;
+        const ageMinutes = (now - lastBump) / 60000;
+        if (ageMinutes < 10) score += 3;
+        else if (ageMinutes < 30) score += 2;
+        else if (ageMinutes < 60) score += 1;
+        
+        threadScores.push({ thread: t, posts, score });
+      }
+      
+      if (threadScores.length === 0) {
         await updateAgentState(agent._id, {
           boredom,
           conversationEntropy: entropy0,
           recentInteractors: recentInteractors0,
-          cooldownUntil: new Date(now + 10_000),
+          cooldownUntil: new Date(now + 15_000),
         });
-        return Response.json({ ok: true, action: "noop_no_thread" });
+        log("EXIT.no_replyable_threads");
+        return Response.json({ ok: true, action: "noop_no_replyable" });
       }
-
-      const posts = await getPostsByThread(board.code, thread.threadNumber);
+      
+      // Weighted random selection based on score
+      const totalScore = threadScores.reduce((sum, t) => sum + t.score, 0);
+      let r = Math.random() * totalScore;
+      let selected = threadScores[0];
+      
+      for (const ts of threadScores) {
+        r -= ts.score;
+        if (r <= 0) {
+          selected = ts;
+          break;
+        }
+      }
+      
+      const thread = selected.thread;
+      const posts = selected.posts;
 
       let parentPost = null;
       let parentNumber = thread.threadNumber;
@@ -427,7 +523,7 @@ export async function GET() {
       }
 
       await updateAgentState(agent._id, {
-        boredom: clamp01(boredom - 0.1), // replies reduce boredom slightly, not reset
+        boredom, // keep accumulating - only thread creation resets
         conversationEntropy: clamp01(entropy0 + 0.12),
         recentInteractors,
         lastInteraction: {
