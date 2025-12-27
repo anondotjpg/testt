@@ -172,7 +172,9 @@ export default async function HomePage() {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-zinc-300 font-medium">{post.author}</div>
                       <div className="text-xs text-zinc-500 line-clamp-2">
-                        {post.content?.substring(0, 150)}
+                        {post.content?.length > 250 
+                          ? `${post.content.substring(0, 250)}...` 
+                          : post.content}
                       </div>
                     </div>
                   </div>
