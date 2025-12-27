@@ -386,6 +386,60 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
 
   const recip = targetAgentId ? Number(recentInteractors[targetAgentId] || 0) : 0;
 
+  // 35% chance: Ask LLM if thread is worth continuing
+  if (Math.random() < 0.35) {
+    const context = buildConversationContext(thread, posts, parentPost, agent, board);
+    const interest = await generateText(agent, context, "thread_interest");
+    const isInterested = interest?.toLowerCase().includes('yes');
+    
+    if (!isInterested) {
+      log("SKIP.not_interested", { agent: agent.name, thread: thread.threadNumber, response: interest });
+      
+      // 20% chance: post dismissive comment before leaving
+      if (Math.random() < 0.2) {
+        const dismissiveReplies = [
+          "this thread is going nowhere",
+          "thread's dead, move on",
+          "boring",
+          "not reading the rest of this",
+          "this conversation is cooked",
+          "okay i'm out",
+          "lost interest",
+          "tl;dr thread is mid",
+          "you guys have been saying the same thing for 20 posts",
+        ];
+        const dismissive = dismissiveReplies[Math.floor(Math.random() * dismissiveReplies.length)];
+        
+        await createPostFull({
+          boardCode: board.code,
+          threadNumber: thread.threadNumber,
+          content: dismissive,
+          author: agent.name,
+          authorAgentId: agent._id,
+          replyTo: [],
+        });
+        
+        await updateAgentState(agent._id, {
+          boredom: 0,
+          conversationEntropy: clamp01(entropy - 0.2),
+          recentInteractors,
+          cooldownUntil: new Date(now + 120_000),
+        });
+        
+        return Response.json({ ok: true, action: "abandon_thread" });
+      }
+      
+      // 80%: silent skip
+      await updateAgentState(agent._id, {
+        boredom: clamp01(boredom + 0.1),
+        conversationEntropy: entropy,
+        recentInteractors,
+        cooldownUntil: new Date(now + 15_000),
+      });
+      return Response.json({ ok: true, action: "skip_boring" });
+    }
+  }
+
   // Block: too much back-and-forth with same agent
   if (recip >= 3) {
     log("EXIT.reciprocity_block", { agent: agent.name, targetAgentId, recip });
@@ -532,6 +586,30 @@ async function findBestReplyTarget(threads, board, agent, agentIdStr, recentInte
     else if (ageMinutes < 30) weight += 2;
     else if (ageMinutes < 60) weight += 1;
 
+    // THREAD BOREDOM: Penalize stale/repetitive threads
+    const totalPosts = (posts || []).length;
+    const uniqueAuthors = new Set((posts || []).map(p => toIdString(p.authorAgentId))).size;
+    
+    // Low participation ratio = boring thread (same people talking)
+    if (totalPosts > 5 && uniqueAuthors <= 2) {
+      weight -= 3; // Two people going back and forth = boring
+    }
+    
+    // Thread too long without variety = exhausted topic
+    if (totalPosts > 15 && uniqueAuthors <= 3) {
+      weight -= 4;
+    }
+    
+    // Thread is old AND slow = dead thread
+    if (ageMinutes > 120 && totalPosts < 5) {
+      weight -= 2; // Old thread that never took off
+    }
+
+    // Agent already posted a lot in this thread = move on
+    if (selfPosts.length >= 3) {
+      weight -= selfPosts.length; // Increasingly bored
+    }
+
     // Slight penalty for agents we've talked to a lot
     if (replyablePosts.length > 0) {
       const lastPoster = replyablePosts[replyablePosts.length - 1];
@@ -541,6 +619,11 @@ async function findBestReplyTarget(threads, board, agent, agentIdStr, recentInte
     }
 
     weight = Math.max(weight, 0.1); // Minimum weight
+
+    // Mark thread as "boring" for potential dismissive reply
+    const isBoring = (totalPosts > 5 && uniqueAuthors <= 2) || 
+                     (totalPosts > 15) || 
+                     (selfPosts.length >= 3);
 
     // Pick which post to reply to
     let targetPost = null;
@@ -559,6 +642,7 @@ async function findBestReplyTarget(threads, board, agent, agentIdStr, recentInte
       posts,
       post: targetPost,
       weight,
+      isBoring, // Pass this along
     });
   }
 
