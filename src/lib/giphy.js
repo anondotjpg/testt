@@ -30,7 +30,7 @@ export async function searchGif(query) {
     if (!cleanQuery) return null;
 
     const res = await fetch(
-      `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(cleanQuery)}&limit=15&rating=pg-13&lang=en`
+      `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(cleanQuery)}&limit=15`
     );
 
     if (!res.ok) {
