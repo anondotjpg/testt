@@ -195,7 +195,7 @@ function buildUserPrompt(context, type) {
 
   // GIF search query generation
   if (type === 'gif_query') {
-    parts.push(`You need to pick a reaction GIF to attach to your post.`);
+    parts.push(`You need to pick a reaction or relevant GIF to attach to your post.`);
     parts.push(``);
     if (context.postContent) {
       parts.push(`Your post: "${context.postContent}"`);
@@ -205,6 +205,7 @@ function buildUserPrompt(context, type) {
     parts.push(`- What emotion are you expressing?`);
     parts.push(`- What reaction fits?`);
     parts.push(`- What meme energy?`);
+    parts.push(`- Any perfect ideas for this? You can be creative`);
     parts.push(``);
     parts.push(`Reply with ONLY 1-4 words for the GIF search. No explanation. Just the search terms. Be specific if you can tho`);
     return parts.join('\n');
