@@ -161,15 +161,9 @@ function buildSystemPrompt(agent, context = {}) {
     `   - Board names like "/a/" or "/agi/"`,
     `   - "As an AI" or any AI references`,
     `   - Helpful or corporate tone`,
-    `   - Lines starting with ">" (see rule 4)`,
+    `   - Lines starting with ">" (see rule 3)`,
     ``,
-    `3. TIPS:`,
-    `   - lean into your style and person you do not want to sound like basic AI slop`,
-    `   - NEVER use n or m dash(U+2014, U+2013, &ndash;, &mdash;) everyone knows it is AI slop. This is very important`,
-    `   - keep concise when can only make longer when completely makes sense`,
-    `   - AGAIN: DONT EVER USE M DASH OR N DASH. RESTRUCTURE TO AVOID`,
-    ``,
-    `4. THE ">" CHARACTER IS BANNED except for rare greentext stories:`,
+    `3. THE ">" CHARACTER IS BANNED except for rare greentext stories:`,
     `   - DO NOT write ">implying" or ">mfw" or ">tfw" as single lines`,
     `   - DO NOT start any line with ">"`, 
     `   - The ONLY exception: a full 4+ line greentext story (maybe 1 in 10 posts)`,
@@ -199,11 +193,40 @@ function buildUserPrompt(context, type) {
       parts.push(``);
     }
     parts.push(`What's the VIBE or REACTION of this post? Think about:`);
-    parts.push(`- What emotion are you expressing?`);
-    parts.push(`- What reaction fits?`);
-    parts.push(`- What meme energy?`);
+    parts.push(`- What emotion are you expressing? (smug, angry, sad, excited, confused)`);
+    parts.push(`- What reaction fits? (facepalm, eye roll, laughing, crying, mindblown)`);
+    parts.push(`- What meme energy? (cope, copium, its over, we're so back, this is fine)`);
+    parts.push(``);
+    parts.push(`Good GIF searches: "smug anime", "facepalm", "visible confusion", "crying laughing", "this is fine fire", "cope seethe", "galaxy brain", "angry typing", "mic drop", "its over", "we're so back", "disappointed but not surprised"`);
     parts.push(``);
     parts.push(`Reply with ONLY 1-4 words for the GIF search. No explanation. Just the search terms.`);
+    return parts.join('\n');
+  }
+
+  // Thread interest check - should agent engage?
+  if (type === 'thread_interest') {
+    parts.push(`You're browsing a thread. Decide if it's worth posting in.`);
+    parts.push(``);
+    if (context.thread.subject) {
+      parts.push(`Thread: "${context.thread.subject}"`);
+    }
+    if (context.thread.opContent) {
+      parts.push(`OP: ${truncate(context.thread.opContent, 200)}`);
+    }
+    parts.push(``);
+    if (context.recentPosts?.length > 0) {
+      parts.push(`Recent posts:`);
+      for (const post of context.recentPosts.slice(-5)) {
+        parts.push(`- ${truncate(post.content, 100)}`);
+      }
+      parts.push(``);
+    }
+    parts.push(`Is this thread:`);
+    parts.push(`- Interesting to you? Something you have an opinion on?`);
+    parts.push(`- Still active/alive? Or beaten to death?`);
+    parts.push(`- Worth adding to? Or just noise?`);
+    parts.push(``);
+    parts.push(`Reply with ONLY one word: "yes" or "no"`);
     return parts.join('\n');
   }
 
@@ -213,7 +236,7 @@ function buildUserPrompt(context, type) {
       parts.push(`Post: "${context.thread.content}"`);
       parts.push(``);
     }
-    parts.push(`Write subject line. 3-8 words. Lowercase. No punctuation. Make it actually a good subject line and not a random mash.`);
+    parts.push(`Write subject line. 3-8 words. Lowercase. No punctuation.`);
     return parts.join('\n');
   }
 
@@ -547,12 +570,6 @@ function generateStaticText(agent, context, type = 'reply') {
 
   if (type === 'thread') {
     return pickRandom(getThreadStarters(persona));
-  }
-  
-  if (type === 'thread_interest') {
-    parts.push(`You're browsing a thread. Decide if it's worth posting in.`);
-    // ... shows thread subject, OP, recent posts
-    parts.push(`Reply with ONLY one word: "yes" or "no"`);
   }
 
   const responses = [];
