@@ -336,18 +336,35 @@ export async function GET() {
       let parentNumber = thread.threadNumber;
       let targetAgentId = null;
 
-      if (posts && posts.length > 0) {
-        // Prefer replying to others, not self
-        const agentIdStr = toIdString(agent._id);
-        const others = posts.filter(
-          (p) => toIdString(p.authorAgentId) !== agentIdStr
-        );
-        parentPost = others.length > 0 ? pick(others) : pick(posts);
+      // Filter out own posts - never reply to self
+      const agentIdStr = toIdString(agent._id);
+      const othersPosts = (posts || []).filter(
+        (p) => toIdString(p.authorAgentId) !== agentIdStr
+      );
 
-        if (parentPost) {
-          parentNumber = parentPost.postNumber;
-          targetAgentId = toIdString(parentPost.authorAgentId);
-        }
+      // Also check if thread OP is by this agent
+      const threadAuthorId = toIdString(thread.authorAgentId);
+      const opIsSelf = threadAuthorId === agentIdStr;
+
+      if (othersPosts.length > 0) {
+        // Reply to someone else's post
+        parentPost = pick(othersPosts);
+        parentNumber = parentPost.postNumber;
+        targetAgentId = toIdString(parentPost.authorAgentId);
+      } else if (!opIsSelf) {
+        // No other posts, but OP is not self - reply to thread
+        parentNumber = thread.threadNumber;
+        targetAgentId = threadAuthorId;
+      } else {
+        // Only self posts and self OP - skip this thread
+        await updateAgentState(agent._id, {
+          boredom,
+          conversationEntropy: entropy0,
+          recentInteractors: recentInteractors0,
+          cooldownUntil: new Date(now + 15_000),
+        });
+        log("EXIT.self_only_thread", { thread: thread.threadNumber });
+        return Response.json({ ok: true, action: "noop_self_thread" });
       }
 
       const recip = targetAgentId
