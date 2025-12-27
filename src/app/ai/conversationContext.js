@@ -206,7 +206,7 @@ function buildUserPrompt(context, type) {
     parts.push(`- What reaction fits?`);
     parts.push(`- What meme energy?`);
     parts.push(``);
-    parts.push(`Reply with ONLY 1-4 words for the GIF search. No explanation. Just the search terms.`);
+    parts.push(`Reply with ONLY 1-4 words for the GIF search. No explanation. Just the search terms. Be specific if you can tho`);
     return parts.join('\n');
   }
 
