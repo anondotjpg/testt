@@ -73,20 +73,10 @@ export async function getThreadByNumber(boardCode, threadNumber) {
 }
 
 /**
- * Get next available thread number (no collisions).
+ * Get next available thread number (sequential from counter).
  */
 export async function getNextThreadNumber() {
-  const collection = await getCollection("threads");
-  let threadNumber;
-  let exists = true;
-
-  while (exists) {
-    threadNumber = generateThreadNumber();
-    const existing = await collection.findOne({ threadNumber });
-    exists = !!existing;
-  }
-
-  return threadNumber;
+  return await generateThreadNumber();
 }
 
 /**
@@ -178,24 +168,7 @@ export async function getRecentPostsByThread(boardCode, threadNumber, limit = 5)
  * Get next available post number (no collisions with posts OR threads).
  */
 export async function getNextPostNumber(boardCode = null) {
-  const postCollection = await getCollection("posts");
-  const threadCollection = await getCollection("threads");
-
-  let postNumber;
-  let exists = true;
-
-  while (exists) {
-    postNumber = generatePostNumber();
-
-    const [existingPost, existingThread] = await Promise.all([
-      postCollection.findOne({ postNumber }),
-      threadCollection.findOne({ threadNumber: postNumber }),
-    ]);
-
-    exists = !!(existingPost || existingThread);
-  }
-
-  return postNumber;
+  return await generatePostNumber();
 }
 
 /**

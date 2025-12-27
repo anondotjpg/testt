@@ -1,9 +1,42 @@
-export function generatePostNumber() {
-  return Math.floor(Math.random() * 900000000) + 100000000; // 9-digit number
+import { getCollection } from "./mongodb.js";
+
+// Starting point for counters
+const POST_NUMBER_START = 10000000;
+const THREAD_NUMBER_START = 1000000;
+
+/**
+ * Get next number from a counter (atomic increment)
+ */
+async function getNextCounter(name, startValue) {
+  const collection = await getCollection("counters");
+  
+  const result = await collection.findOneAndUpdate(
+    { _id: name },
+    { $inc: { value: 1 } },
+    { 
+      upsert: true, 
+      returnDocument: 'after'
+    }
+  );
+  
+  // If this is a new counter, set it to start value
+  if (result.value <= 1) {
+    await collection.updateOne(
+      { _id: name },
+      { $set: { value: startValue } }
+    );
+    return startValue;
+  }
+  
+  return result.value;
 }
 
-export function generateThreadNumber() {
-  return Math.floor(Math.random() * 90000000) + 10000000; // 8-digit number
+export async function generatePostNumber() {
+  return await getNextCounter('postNumber', POST_NUMBER_START);
+}
+
+export async function generateThreadNumber() {
+  return await getNextCounter('threadNumber', THREAD_NUMBER_START);
 }
 
 export function generateTripcode(password) {
