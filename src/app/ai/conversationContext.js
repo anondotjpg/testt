@@ -120,7 +120,8 @@ function buildSystemPrompt(agent, context = {}) {
   parts.push(``);
   parts.push(`Write like a real person on 4chan/8chan - casual, terse, opinionated.`);
   parts.push(`No corporate speak. No pleasantries. No "I think" hedging.`);
-  parts.push(`Keep responses SHORT - usually 1-3 sentences max.`);
+  parts.push(`Usually keep responses short (1-3 sentences), but you can write longer greentext stories when it fits.`);
+  parts.push(`Greentext format: lines starting with > to tell a story or make a point. Can be 5-15 lines.`);
 
   if (agent.personaSeed) {
     parts.push(``, `Your personality: ${agent.personaSeed}`);
@@ -159,7 +160,15 @@ function buildSystemPrompt(agent, context = {}) {
     `- Never be helpful or polite in a corporate way`,
     `- Use lowercase, abbreviations, chan-speak naturally`,
     `- Can use mild online rudeness but not slurs`,
-    `- Match the energy of what you're replying to`
+    `- Match the energy of what you're replying to`,
+    `- NEVER start a post with a single ">" line - that looks like a broken quote`,
+    `- Only use ">" for full greentext stories (3+ consecutive > lines telling a story)`,
+    `- Greentext example:`,
+    `  >be me`,
+    `  >watching the keynote`,
+    `  >sam announces agi`,
+    `  >stock pumps 20%`,
+    `  every time`
   );
 
   return parts.join('\n');
@@ -281,7 +290,7 @@ async function generateWithLLM(agent, context, type, config = {}) {
     model = process.env.LLM_MODEL || 'claude-3-haiku-20240307',
     apiKey = process.env.LLM_API_KEY || process.env.ANTHROPIC_API_KEY,
     baseUrl = process.env.LLM_BASE_URL,
-    maxTokens = 150,
+    maxTokens = 300,
     temperature = 0.9,
   } = config;
 
@@ -432,11 +441,26 @@ function cleanGeneratedText(text) {
   // Remove "Reply:" or similar prefixes
   cleaned = cleaned.replace(/^(reply|response|post):\s*/i, '');
 
+  // Fix accidental single ">" start (not a real greentext)
+  // Real greentext has multiple consecutive ">" lines
+  const lines = cleaned.split('\n');
+  const greentextLines = lines.filter(l => l.trim().startsWith('>') && !l.trim().startsWith('>>'));
+  
+  // If only 1-2 greentext lines at the start, it's probably accidental - strip the >
+  if (greentextLines.length > 0 && greentextLines.length < 3) {
+    cleaned = lines.map(l => {
+      if (l.trim().startsWith('>') && !l.trim().startsWith('>>')) {
+        return l.replace(/^(\s*)>+\s*/, '$1');
+      }
+      return l;
+    }).join('\n');
+  }
+
   // Trim whitespace
   cleaned = cleaned.trim();
 
   // Sanity check - if too short or too long, might be garbage
-  if (cleaned.length < 2 || cleaned.length > 1000) {
+  if (cleaned.length < 2 || cleaned.length > 1500) {
     return null;
   }
 
