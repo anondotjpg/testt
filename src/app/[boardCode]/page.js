@@ -103,7 +103,7 @@ export default function BoardPage({ params }) {
   }
 
   return (
-    <div className="max-w-sm md:max-w-6xl mx-auto px-4 pb-4">
+    <div className="max-w-sm md:max-w-5xl mx-auto px-4 pb-4">
       {/* Top center board links */}
       <div className="text-center mb-4 md:mb-6">
         <div className="text-sm">

@@ -3,7 +3,7 @@
 import { parseContent, formatFileSize, truncateFilename } from '@/lib/utils';
 import { useState } from 'react';
 
-export default function Post({ post, isOP = false, boardCode }) {
+export default function Post({ post, isOP = false, boardCode, onToggleHide, isHidden }) {
   const [imageExpanded, setImageExpanded] = useState(false);
   
   const formatDate = (date) => {
@@ -83,46 +83,60 @@ export default function Post({ post, isOP = false, boardCode }) {
             ))}
           </span>
         )}
-      </div>
 
-      <div className="flex">
-        {(post.imageUrl || post.thumbnailUrl) && (
-          <div className="mr-4 mb-2">
-            <div className="text-xs text-gray-600 mb-1">
-              File: {truncateFilename(post.imageName)} ({formatFileSize(post.fileSize)})
-            </div>
-            <div 
-              className="cursor-pointer"
-              onClick={() => setImageExpanded(!imageExpanded)}
-            >
-              {imageExpanded ? (
-                <img
-                  src={post.imageUrl}
-                  alt={post.imageName}
-                  className="max-h-40 max-w-40 md:max-h-64 md:max-w-64 border border-gray-400"
-                />
-              ) : (
-                <img
-                  src={post.thumbnailUrl}
-                  alt={post.imageName}
-                  className="border border-gray-400 max-w-32 max-h-32"
-                />
-              )}
-            </div>
-          </div>
+        {/* Hide/show toggle - only shown if onToggleHide is provided */}
+        {onToggleHide && (
+          <button
+            onClick={onToggleHide}
+            className="text-gray-500 hover:text-gray-700 ml-2 text-sm cursor-pointer"
+            title={isHidden ? "Show post" : "Hide post"}
+          >
+            [{isHidden ? '+' : '−'}]
+          </button>
         )}
-
-        <div className="flex-1">
-          {post.content && (
-            <div 
-              className={`text-sm break-words whitespace-pre-wrap ${
-                hasGreentext(post.content) ? 'leading-[1.2]' : 'leading-[1.2]'
-              }`}
-              dangerouslySetInnerHTML={{ __html: parseContent(post.content) }}
-            />
-          )}
-        </div>
       </div>
+
+      {/* Only show content if not hidden */}
+      {!isHidden && (
+        <div className="flex">
+          {(post.imageUrl || post.thumbnailUrl) && (
+            <div className="mr-4 mb-2">
+              <div className="text-xs text-gray-600 mb-1">
+                File: {truncateFilename(post.imageName)} ({formatFileSize(post.fileSize)})
+              </div>
+              <div 
+                className="cursor-pointer"
+                onClick={() => setImageExpanded(!imageExpanded)}
+              >
+                {imageExpanded ? (
+                  <img
+                    src={post.imageUrl}
+                    alt={post.imageName}
+                    className="max-h-40 max-w-40 md:max-h-64 md:max-w-64 border border-gray-400"
+                  />
+                ) : (
+                  <img
+                    src={post.thumbnailUrl}
+                    alt={post.imageName}
+                    className="border border-gray-400 max-w-32 max-h-32"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="flex-1">
+            {post.content && (
+              <div 
+                className={`text-sm break-words whitespace-pre-wrap ${
+                  hasGreentext(post.content) ? 'leading-[1.2]' : 'leading-[1.2]'
+                }`}
+                dangerouslySetInnerHTML={{ __html: parseContent(post.content) }}
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
