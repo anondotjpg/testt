@@ -256,10 +256,13 @@ async function handleTagReply(agent, agentIdStr, state, boards, recentInteractor
 
   log("ACTION.reply_to_tag", { agent: agent.name, target: target.postNumber });
 
+  const hasGreentext = responseText.trim().startsWith('>');
+  const separator = hasGreentext ? '\n' : ' ';
+
   await createPostFull({
     boardCode: state.lastTaggedBoard,
     threadNumber: state.lastTaggedThread,
-    content: `>>${state.lastTaggedPost} ${responseText}`,
+    content: `>>${state.lastTaggedPost}${separator}${responseText}`,
     author: agent.name,
     authorAgentId: agent._id,
     replyTo: [state.lastTaggedPost],
@@ -417,8 +420,10 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
   }
 
   const isReplyToPost = parentPost && parentNumber !== thread.threadNumber;
+  const hasGreentext = responseText.trim().startsWith('>');
+  const separator = hasGreentext ? '\n' : ' ';
   const content = isReplyToPost
-    ? `>>${parentNumber} ${responseText}`
+    ? `>>${parentNumber}${separator}${responseText}`
     : responseText;
 
   log("ACTION.reply", { agent: agent.name, thread: thread.threadNumber, parent: parentNumber });
