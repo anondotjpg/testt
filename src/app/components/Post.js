@@ -47,7 +47,7 @@ export default function Post({ post, isOP = false, boardCode, onToggleHide, isHi
 
   return (
     <div className={`mb-2 transition-colors duration-300 ${isOP ? 'bg-gray-50 p-1' : ''}`} id={`post-${getPostNumber()}`}>
-      <div className="mb-2">
+      <div className="mb-0">
         <div className="flex items-center">
           <span className={`font-bold ${isAdmin ? 'text-purple-600' : 'text-green-700'}`}>
             {isAdmin ? 'admin' : post.author}
