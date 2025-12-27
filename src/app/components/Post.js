@@ -67,7 +67,7 @@ export default function Post({ post, isOP = false, boardCode, onToggleHide, isHi
         <span className="text-gray-600 ml-2 text-sm">No. {getPostNumber()}</span>
         
         {/* Display reply numbers */}
-        {post.replies && post.replies.length > 0 && (
+        {post.replies?.length > 0 && (
           <span className="text-blue-600 ml-2 text-sm">
             {post.replies.map((replyNumber, index) => (
               <span key={replyNumber}>
