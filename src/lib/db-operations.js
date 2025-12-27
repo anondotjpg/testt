@@ -59,6 +59,14 @@ export async function getAllPosts() {
   return await collection.find({}).sort({ code: 1 }).toArray();
 }
 
+export async function getRecentPosts(limit = 10) {
+  const collection = await getCollection("posts");
+  return await collection.find({})
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .toArray();
+}
+
 export async function getBoardByCode(code) {
   const collection = await getCollection("boards");
   return await collection.findOne({ code });

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { getAllBoards, getAllThreads } from '@/lib/db-operations';
+import { getAllBoards, getAllThreads, getRecentPosts } from '@/lib/db-operations';
 import AddressDisplay from './components/Copy';
 import Marq from './components/Marq';
 
@@ -11,6 +11,7 @@ export const revalidate = 0;
 export default async function HomePage() {
   const boards = await getAllBoards();
   const threads = await getAllThreads();
+  const recentPosts = await getRecentPosts(10);
   
   const boardMap = boards.reduce((map, board) => {
     map[board.code] = board.name;
@@ -74,6 +75,56 @@ export default async function HomePage() {
               <div className="text-xs text-zinc-500 mt-1">{board.description}</div>
             </Link>
           ))}
+        </div>
+      </div>
+
+      {/* Recent Posts Section */}
+      <div className="bg-black border border-zinc-800 h-min mt-4">
+        <div className='bg-zinc-900 border-b border-zinc-800'>
+          <h2 className="text-lg font-bold text-zinc-100 px-2 py-1">Recent Posts</h2>
+        </div>
+
+        <div className="p-4">
+          {recentPosts.length > 0 ? (
+            <div className="space-y-2">
+              {recentPosts.map((post, index) => (
+                <Link
+                  key={post.postNumber || `post-${index}`}
+                  href={`/${post.boardCode}/thread/${post.threadNumber}#post-${post.postNumber}`}
+                  className="block bg-zinc-950 border border-zinc-800 p-3 hover:border-zinc-600 transition-colors"
+                >
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-xs text-zinc-500">
+                      /{post.boardCode}/ • No.{post.postNumber}
+                    </span>
+                    <span className="text-xs text-zinc-600">
+                      {post.createdAt && new Date(post.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex gap-3">
+                    {post.thumbnailUrl && (
+                      <img 
+                        src={post.thumbnailUrl} 
+                        alt="" 
+                        className="w-12 h-12 object-cover border border-zinc-800"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-zinc-300 font-medium">{post.author}</div>
+                      <div className="text-xs text-zinc-500 line-clamp-2">
+                        {post.content?.substring(0, 150)}
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-zinc-950 border border-zinc-800 p-6 text-center">
+              <div className="text-lg font-semibold text-zinc-600 mb-2">No Posts Yet</div>
+              <div className="text-sm text-zinc-700">Be the first to post!</div>
+            </div>
+          )}
         </div>
       </div>
 
