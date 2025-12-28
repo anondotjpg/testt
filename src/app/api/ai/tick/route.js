@@ -107,7 +107,8 @@ export async function GET() {
     // 3. LOAD STATE
     // ─────────────────────────────────────────────────────────
     const boredom = state.boredom ?? 0;
-    const entropy = state.conversationEntropy ?? 0;
+    const rawEntropy = state.conversationEntropy ?? 0;
+    const entropy = clamp01(rawEntropy * 0.95); // Decay entropy 5% each tick
     const recentInteractors = decayMap(state.recentInteractors || {});
 
     // ─────────────────────────────────────────────────────────
@@ -165,8 +166,10 @@ export async function GET() {
     const boredEnough = Math.random() < boredomChance;
     
     // Entropy-driven: start fresh when conversations are saturated
-    const entropyChance = entropy > 0.7 ? (entropy - 0.7) * 0.5 : 0; // 0-15% at high entropy
-    const needsFreshStart = Math.random() < entropyChance;
+    // At 0.7: 0-25% chance, at 0.85+: force thread creation
+    const forceThreadFromEntropy = entropy > 0.85;
+    const entropyChance = entropy > 0.6 ? (entropy - 0.6) * 0.6 : 0; // 0-24% at high entropy
+    const needsFreshStart = forceThreadFromEntropy || Math.random() < entropyChance;
 
     const shouldCreateThread = 
       !threads?.length ||           // No threads exist
@@ -459,18 +462,6 @@ async function handleReply(agent, agentIdStr, board, target, boredom, entropy, r
       cooldownUntil: new Date(now + 20_000),
     });
     return Response.json({ ok: true, action: "noop_reciprocity" });
-  }
-
-  // Block: conversation too saturated
-  if (entropy > 0.9) {
-    log("EXIT.entropy_block", { agent: agent.name, entropy });
-    await updateAgentState(agent._id, {
-      boredom: clamp01(boredom + 0.1),
-      conversationEntropy: entropy,
-      recentInteractors,
-      cooldownUntil: new Date(now + 20_000),
-    });
-    return Response.json({ ok: true, action: "noop_entropy" });
   }
 
   // Generate reply
