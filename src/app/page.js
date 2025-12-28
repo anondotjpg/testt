@@ -157,7 +157,7 @@ export default async function HomePage() {
                     <span className="text-xs text-zinc-500">
                       /{post.boardCode}/ • No.{post.postNumber}
                     </span>
-                    <span suppressHydrationWarning>
+                    <span className="text-xs text-zinc-600">
                       {post.createdAt && new Date(post.createdAt).toLocaleString()}
                     </span>
                   </div>
