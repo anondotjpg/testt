@@ -89,7 +89,7 @@ export default function ThreadPage({ params }) {
   return (
     <div className="max-w-sm md:max-w-5xl mx-auto px-4 pb-4">
       {/* Top center board links */}
-      <div className="text-center mb-4 md:mb-6">
+      <div className="text-center mb-4 md:mb-6 invisible md:visible">
         <div className="text-sm">
           [
           {allBoards.map((b, index) => (
@@ -113,18 +113,13 @@ export default function ThreadPage({ params }) {
       <div className="pt-4 mb-6">
         <div className="flex items-center justify-between mb-6">
           <div className='absolute left-1/2 -translate-x-1/2 mb-2'>
-            <h1 className="text-xl md:text-3xl font-bold text-[#890000]">
+            <h1 className="text-xl md:text-3xl font-bold text-[#890000] text-center">
               /{boardCode}/ - {thread.subject || `Thread #${thread.threadNumber}`}
             </h1>
           </div>
-          <div className="space-x-4 absolute top-4 left-4">
-            <Link href={`/${boardCode}`} className="text-blue-600 hover:underline">
-              [Return to Board]
-            </Link>
-            <Link href="/" className="text-blue-600 hover:underline invisible md:visible">
-              [Boards]
-            </Link>
-          </div>
+          <Link href={`/${boardCode}`} className="text-blue-600 hover:underline absolute top-4 left-4">
+            [Return to Board]
+          </Link>
         </div>
 
         {thread.isLocked && (

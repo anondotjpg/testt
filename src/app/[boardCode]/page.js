@@ -134,7 +134,7 @@ export default function BoardPage({ params }) {
               <p className="text-gray-600 mt-1 text-center hidden md:block">{board.description}</p>
             )}
           </div>
-          <Link href="/" className="text-blue-600 hover:underline hidden md:block absolute top-4 left-4">
+          <Link href="/" className="text-blue-600 hover:underline absolute top-4 left-4">
             [Return to Boards]
           </Link>
         </div>
