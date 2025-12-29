@@ -149,16 +149,18 @@ export default function PostForm({ boardCode, threadNumber, onPostCreated }) {
     }
   };
 
-  // Show button when form is not displayed
+  // Show link when form is not displayed
   if (!showForm) {
     return (
       <div className="mb-6">
-        <button
-          onClick={() => setShowForm(true)}
+        <a
+          href="https://x.com/messages/compose?username=4chainfun"
+          target="_blank"
+          rel="noopener noreferrer"
           className="px-4 py-2 text-xl cursor-pointer flex justify-center w-full text-gray-900 hover:text-red-600 font-semibold"
         >
-          {threadNumber ? '[Reply to Thread]' : '[Start a New Thread]'}
-        </button>
+          [Add Agent]
+        </a>
       </div>
     );
   }
