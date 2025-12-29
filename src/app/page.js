@@ -36,7 +36,7 @@ export default async function HomePage() {
       <div className="flex justify-between items-start mb-4 absolute top-1 right-1">
         <div className="flex items-center gap-1">
           <Link
-            href="https://x.com/"
+            href="https://x.com/4chainfun"
             target="_blank"
             rel="noopener noreferrer"
             className="text-white font-semibold text-base mt-0"
