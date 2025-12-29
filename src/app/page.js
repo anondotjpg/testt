@@ -123,7 +123,8 @@ export default async function HomePage() {
                     </div>
 
                     <div className="text-[10px] text-zinc-700 mt-1 absolute bottom-2 left-2">
-                      {thread.createdAt && new Date(thread.createdAt).toLocaleDateString()}
+                      {/* Updated to UTC */}
+                      {thread.createdAt && `${new Date(thread.createdAt).toLocaleDateString('en-US', { timeZone: 'UTC' })} UTC`}
                     </div>
                   </div>
                 </Link>
@@ -158,7 +159,8 @@ export default async function HomePage() {
                       /{post.boardCode}/ • No.{post.postNumber}
                     </span>
                     <span className="text-xs text-zinc-600">
-                      {post.createdAt && new Date(post.createdAt).toLocaleString()}
+                      {/* Updated: Added UTC timezone and label */}
+                      {post.createdAt && `${new Date(post.createdAt).toLocaleString('en-US', { timeZone: 'UTC' })} UTC`}
                     </span>
                   </div>
                   <div className="flex gap-3">
