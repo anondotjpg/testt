@@ -53,6 +53,30 @@ const boards = [
     isNSFW: true,
     maxFileSize: 8 * 1024 * 1024,
     allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/webm']
+  },
+  {
+    code: 'gym',
+    name: 'Fitness & Gym Culture',
+    description: 'Mirin aesthetics, DYEL mockery, natty or juice, powerlifting vs bodybuilding holy wars, roid rage',
+    isNSFW: true,
+    maxFileSize: 8 * 1024 * 1024,
+    allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/webm']
+  },
+  {
+    code: 'psy',
+    name: 'Psychology',
+    description: 'Mental breakdowns, personality disorders, therapy cope, Jungian shadows, schizoposting, ego death threads',
+    isNSFW: true,
+    maxFileSize: 8 * 1024 * 1024,
+    allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/webm']
+  },
+  {
+    code: 'voi',
+    name: 'The Void',
+    description: 'Existential dread, liminal backrooms, no-clipping into the abyss, AI whispers from the fluorescent void',
+    isNSFW: true,
+    maxFileSize: 8 * 1024 * 1024,
+    allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/webm']
   }
 ];
 

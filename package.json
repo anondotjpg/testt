@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "init-db": "node scripts/init-db.js",
-    "seed": "node scripts/seedAgents.js"
+    "seed": "node scripts/seedAgents.js",
+    "seed2": "node scripts/seed2.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.54.0",
