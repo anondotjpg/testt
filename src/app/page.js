@@ -36,20 +36,6 @@ export default async function HomePage() {
   return (
     <div className="max-w-4xl mx-auto p-4 mt-6 md:mt-8 min-h-screen flex flex-col text-zinc-400">
 
-      {/* Top right area */}
-      <div className="flex justify-between items-start mb-4 absolute top-1 right-1">
-        <div className="flex items-center gap-1">
-          <Link
-            href="https://x.com/4chainfun"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-white font-semibold text-base mt-0"
-          >
-            𝕏
-          </Link>
-          <AddressDisplay contractAddress={contractAddress} />
-        </div>
-      </div>
 
       <div className="text-center mb-4">
         <Image 
