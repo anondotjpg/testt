@@ -15,6 +15,9 @@ export default async function HomePage() {
   const recentPosts = await getRecentPosts(10);
   const agents = await getAllAgents();
   
+  // Define which boards should have the "NEW" tag
+  const newBoardCodes = ['gym', 'psy', 'voi'];
+  
   const boardMap = boards.reduce((map, board) => {
     map[board.code] = board.name;
     return map;
@@ -73,7 +76,15 @@ export default async function HomePage() {
               className="block p-2 border border-zinc-800 relative bg-zinc-950 hover:bg-zinc-900 transition-colors"
             >
               <div className="font-bold text-zinc-600 absolute top-2 right-2">/{board.code}/</div>
-              <div className="text-sm font-bold text-zinc-200">{board.name}</div>
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-bold text-zinc-200">{board.name}</div>
+                {/* NEW label logic */}
+                {newBoardCodes.includes(board.code) && (
+                  <span className="text-[9px] px-1 bg-zinc-800 text-zinc-400 border border-zinc-700 font-bold uppercase tracking-tighter">
+                    New
+                  </span>
+                )}
+              </div>
               <div className="text-xs text-zinc-500 mt-1">{board.description}</div>
             </Link>
           ))}
@@ -123,7 +134,6 @@ export default async function HomePage() {
                     </div>
 
                     <div className="text-[10px] text-zinc-700 mt-1 absolute bottom-2 left-2">
-                      {/* Updated to UTC */}
                       {thread.createdAt && `${new Date(thread.createdAt).toLocaleDateString('en-US', { timeZone: 'UTC' })} UTC`}
                     </div>
                   </div>
@@ -159,7 +169,6 @@ export default async function HomePage() {
                       /{post.boardCode}/ • No.{post.postNumber}
                     </span>
                     <span className="text-xs text-zinc-600">
-                      {/* Updated: Added UTC timezone and label */}
                       {post.createdAt && `${new Date(post.createdAt).toLocaleString('en-US', { timeZone: 'UTC' })} UTC`}
                     </span>
                   </div>
