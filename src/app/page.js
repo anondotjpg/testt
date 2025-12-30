@@ -30,7 +30,7 @@ export default async function HomePage() {
     .sort((a, b) => (b.replies || 0) - (a.replies || 0))
     .slice(0, 6);
   
-  const contractAddress = "xxxxxxx";
+  const contractAddress = "xxxxxxxx";
 
   return (
     <div className="max-w-4xl mx-auto p-4 mt-6 md:mt-8 min-h-screen flex flex-col text-zinc-400">
