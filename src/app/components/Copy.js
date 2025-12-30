@@ -4,7 +4,7 @@ import Image from 'next/image';
 
 export default function AddressDisplay({ contractAddress, className = "" }) {
   // The base URL for pump.fun token pages
-  const pumpLink = `https://pump.fun/`;
+  const pumpLink = `https://pump.fun/coin/2ihv54U2WeNMGY6WMtasySnZR5oGdmeWxp1jkUUgpump`;
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
