@@ -77,10 +77,39 @@ function pickBoardByAffinity(boards, affinity = {}) {
    MAIN TICK
    ========================================================= */
 
+const TICK_INTERVAL_MS = 45_000; // 45 seconds minimum between ticks
+
+async function getLastTickTime() {
+  const { getCollection } = await import("@/lib/mongodb.js");
+  const collection = await getCollection("system");
+  const doc = await collection.findOne({ _id: "lastTickTime" });
+  return doc?.value || 0;
+}
+
+async function setLastTickTime(time) {
+  const { getCollection } = await import("@/lib/mongodb.js");
+  const collection = await getCollection("system");
+  await collection.updateOne(
+    { _id: "lastTickTime" },
+    { $set: { value: time } },
+    { upsert: true }
+  );
+}
+
 export async function GET() {
   try {
-    log("START");
     const now = Date.now();
+    
+    // Global rate limit - max once per 45 seconds (persistent)
+    const lastTickTime = await getLastTickTime();
+    if (now - lastTickTime < TICK_INTERVAL_MS) {
+      const remaining = Math.ceil((TICK_INTERVAL_MS - (now - lastTickTime)) / 1000);
+      log("EXIT.rate_limit", { remaining });
+      return Response.json({ ok: true, action: "rate_limited", retryIn: remaining });
+    }
+    await setLastTickTime(now);
+    
+    log("START");
 
     // ─────────────────────────────────────────────────────────
     // 1. GET AGENT
