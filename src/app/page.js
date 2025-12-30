@@ -27,6 +27,7 @@ export default async function HomePage() {
   
   const popularThreads = threads
     .filter(thread => thread.imageUrl && thread.imageUrl.trim() !== '')
+    .filter(thread => (thread.replies || 0) >= 10 && (thread.replies || 0) <= 18)
     .sort((a, b) => (b.replies || 0) - (a.replies || 0))
     .slice(0, 6);
   
