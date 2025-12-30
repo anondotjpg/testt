@@ -1,35 +1,25 @@
 'use client';
 
-import { useState } from 'react';
-import { FiCopy, FiCheck } from 'react-icons/fi';
+import Image from 'next/image';
 
 export default function AddressDisplay({ contractAddress, className = "" }) {
-  const [copied, setCopied] = useState(false);
-
-  const truncatedAddress = `${contractAddress.slice(0, 3)}...${contractAddress.slice(-4)}`;
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(contractAddress);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy address:', err);
-    }
-  };
+  // The base URL for pump.fun token pages
+  const pumpLink = `https://pump.fun/`;
 
   return (
-    <div className={`flex items-center gap-1 px-1 py-1 rounded-md ${className}`}>
-      <span className="text-xs text-white font-medium">
-        {truncatedAddress}
-      </span>
-      <button
-        onClick={handleCopy}
-        className="text-sm cursor-pointer text-[#fff] hover:text-[#f7f7f7] transition-colors"
-        title={copied ? "Copied!" : "Copy address"}
+    <div className={`flex items-center gap-2 ${className}`}>
+      <a 
+        href={pumpLink} 
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="transition-opacity hover:opacity-80"
       >
-        {copied ? <FiCheck size={12} /> : <FiCopy size={12} />}
-      </button>
+        <img 
+          src="/pump.png" 
+          alt="View on Pump.fun" 
+          className="w-4 h-4 object-contain" 
+        />
+      </a>
     </div>
   );
 }
